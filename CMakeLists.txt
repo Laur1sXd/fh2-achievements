@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 # Bump VERSION before tagging a release.
-project(achievements VERSION 0.1.1 LANGUAGES C CXX RC)
+project(achievements VERSION 0.2.0 LANGUAGES C CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,6 +28,7 @@ configure_file(cmake/version.h.in ${CMAKE_BINARY_DIR}/generated/fh2_version.h)
 # The mod: fh2-mods\Achievements.dll
 add_library(achievements SHARED
     src/achievements.cpp
+    src/page.cpp
     src/rules.cpp
     src/save_reader.cpp
     src/sqlite.cpp

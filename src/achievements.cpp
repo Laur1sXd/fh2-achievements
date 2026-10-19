@@ -422,7 +422,30 @@ bool save_store(const std::wstring& path, const Store& s) {
     return ok && MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
 }
 
-// fh2-mods\Achievements\Achievements.txt: the list, until the in-game page exists.
+// ---- the in-game page (platform API 8) ------------------------------------------------------
+
+bool g_pageOn = false;   // the platform has pages, and ours was added
+
+void push_page(const Facts* f, const Store& s) {
+    if (!g_pageOn) return;
+    const std::vector<PageRow> rows = page_rows(f, s.unlocked);
+    std::vector<FH2PageRow> out;
+    out.reserve(rows.size());
+    for (const PageRow& r : rows) {
+        FH2PageRow p{};
+        p.size        = sizeof p;
+        p.key         = r.key.empty() ? nullptr : r.key.c_str();
+        p.label       = r.label.c_str();
+        p.value       = r.value.c_str();
+        p.description = r.description.c_str();
+        p.footer      = r.footer.c_str();
+        p.style       = r.style;
+        out.push_back(p);
+    }
+    g_api->set_page_rows(g_mod, "List", out.data(), static_cast<uint32_t>(out.size()));
+}
+
+// fh2-mods\Achievements\Achievements.txt: the same list as a text file.
 void write_list(const std::wstring& path, const Facts& f, const Store& s) {
     int got = 0, gs = 0, gsAll = 0;
     for (const Def& d : defs()) {
@@ -518,9 +541,9 @@ DWORD WINAPI worker(LPVOID) {
 
     SaveFacts save;
     LiveFacts live;
-    bool firstEval = true, storeDirty = false, dirty = false, listDirty = false;
+    bool firstEval = true, storeDirty = false, dirty = false, listDirty = false, pageDirty = true;
     uint32_t statVersion = ~0u;
-    ULONGLONG lastScan = 0, lastFlush = 0, lastStoreWrite = 0, lastList = 0;
+    ULONGLONG lastScan = 0, lastFlush = 0, lastStoreWrite = 0, lastList = 0, lastPage = 0;
     std::map<std::string, ULONGLONG> refused;   // revision -> when it was last refused
 
     for (;;) {
@@ -601,8 +624,20 @@ DWORD WINAPI worker(LPVOID) {
                 firstEval = false;
                 if (!store.existed) storeDirty = true;   // so a first run with nothing unlocked still counts as run
             }
-            listDirty = true;
-            if (!fresh.empty()) lastList = 0;   // write it now
+            listDirty = pageDirty = true;
+            if (!fresh.empty()) lastList = lastPage = 0;   // write them now
+        }
+        // The page: kept up to date for when it's opened (it's written then, from these rows).
+        // Before a save has been read, it has what's unlocked, without progress.
+        if (pageDirty && now - lastPage > 2000) {
+            if (save.ok) {
+                const Facts f{gd, save, live, store.ctr};
+                push_page(&f, store);
+            } else {
+                push_page(nullptr, store);
+            }
+            pageDirty = false;
+            lastPage  = now;
         }
         if (listDirty && save.ok && now - lastList > 10000) {
             write_list(listPath, Facts{gd, save, live, store.ctr}, store);
@@ -636,7 +671,7 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     info.version          = ACH_VERSION;
     info.platform_version = FH2MOD_PLATFORM_VERSION;
     info.description      = "Forza Horizon 2's 88 achievements, earned offline, with the game's own pop-up. Progress "
-                            "already in your save counts.";
+                            "already in your save counts. The pause menu's ACHIEVEMENTS tile lists them all.";
     g_mod = api->register_mod(&info);
     if (!g_mod) return 1;
 
@@ -660,6 +695,26 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     s.value       = g_popupsOn ? 1 : 0;
     s.on_change   = &on_setting;
     api->add_setting(g_mod, &s);
+
+    // The page: on the pause menu's ACHIEVEMENTS tile (and the Storm Island tab's), and under
+    // MODS > Installed mods > Achievements. Its rows come from the worker.
+    if (api->api_version >= 8) {
+        FH2Page p{};
+        p.size        = sizeof p;
+        p.key         = "List";
+        p.title       = "Achievements";
+        p.label       = "Achievements list";
+        p.description = "Every achievement, unlocked or not, with your progress towards the locked ones.";
+        p.tile        = "Achievements";
+        g_pageOn      = api->add_page(g_mod, &p) != 0;
+        if (g_pageOn) {
+            FH2PageRow r{};
+            r.size        = sizeof r;
+            r.label       = "Not ready yet";
+            r.description = "The list shows once the game has loaded your profile. Try again in a moment.";
+            api->set_page_rows(g_mod, "List", &r, 1);
+        }
+    }
 
     if (HANDLE t = CreateThread(nullptr, 0, worker, nullptr, 0, nullptr)) CloseHandle(t);
     return 0;

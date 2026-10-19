@@ -162,6 +162,17 @@ bool read_revision(const std::wstring& revisionDir, const std::wstring& scratch,
                    std::string& why);
 bool read_game_data(const std::wstring& gameDir, GameData& out, std::string& why);
 
+// ---- the in-game page (page.cpp) -------------------------------------------------------------
+
+// One row of the Achievements page, as the platform's FH2PageRow (style is FH2_ROW_...).
+struct PageRow {
+    std::string key, label, value, description, footer;
+    int style = 0;
+};
+// The page's rows: a summary, then each group under a heading. `f` is null until a save has
+// been read (then there's no progress to show); `unlocked` is id -> when.
+std::vector<PageRow> page_rows(const Facts* f, const std::map<std::string, std::string>& unlocked);
+
 // ---- SQLite (Windows' own winsqlite3.dll) ----------------------------------------------------
 
 struct Sql;
