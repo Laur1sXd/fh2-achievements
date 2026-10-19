@@ -10,8 +10,10 @@
 //    of the island ones are Gauntlets (race mode IronMan).
 //  - 175 mainland reward boards and 25 Storm Island bonus boards, 10 mainland barn finds and one
 //    on Storm Island (pdlc_barn_find_01), all listed in SaveState whether found or not.
-//  - Bucket lists 1-3 are the mainland's (45 challenges), 4-5 Storm Island's (8), 6 the Porsche
-//    one (10).
+//  - Bucket lists 1-3 are the mainland's (15 challenges each: The Horizon, The Second Horizon and
+//    Beat Playground Games), 4-5 Storm Island's (8), 6 the Porsche one (10). The mainland bucket
+//    list achievements count the first two only.
+//  - Names, descriptions and Gamerscore are the achievements' own text on Xbox Live.
 //  - Showcase "Train in Vain" is event 92; the Horizon Finale is 201, Storm Island's 937.
 //  - Car ids: Fiesta '81 2158, Galant VR-4 1381, Metro 6R4 2147, Ranger T6 2145, #7 SST 2143;
 //    Porsche 911 Turbo 3.3 265, 914/6 266, 944 Turbo 268, 959 269, Carrera GT 292, 911 Turbo S
@@ -165,12 +167,11 @@ RULE(r_barns10) { return P(barns_restored(f), 10); }
 RULE(r_photos) {
     return P(std::max<double>(f.save.photos, f.stat("CompareStats/PhotoChallengesCompleted")), 100);
 }
-RULE(r_bucket1) { return P(bucket(f, {1, 2, 3}).solo, 1); }
-RULE(r_bucket15) { return P(bucket(f, {1, 2, 3}).solo, 15); }
-RULE(r_bucket_all) {
-    auto b = bucket(f, {1, 2, 3});
-    return P(b.solo, b.total ? b.total : 45);
-}
+// The first two Horizon Bucket Lists (1 and 2, 15 challenges each); the third, Beat Playground
+// Games, came later and the achievements were reworded to leave it out.
+RULE(r_bucket1) { return P(bucket(f, {1, 2}).solo, 1); }
+RULE(r_bucket15) { return P(bucket(f, {1, 2}).solo, 15); }
+RULE(r_bucket30) { return P(bucket(f, {1, 2}).solo, 30); }
 RULE(r_train) { return Flag(won_event(f, kTrainInVain)); }
 // Weather, from the races' set weather: any finished in the rain (the save's results, or since
 // the mod was installed); events won in a storm.
@@ -207,7 +208,7 @@ RULE(r_mp200) { return P(f.stat("MiscStats/OnlineEventsFinished"), 200); }
 RULE(r_team50) { return P(f.stat("MiscStats/OnlineTeamRacesWon"), 50); }
 RULE(r_online_trip1) { return P(f.stat("CompareStats/OnlineRoadTripDestsCompleted"), 1); }
 RULE(r_online_trip25) { return P(f.stat("CompareStats/OnlineRoadTripDestsCompleted"), 25); }
-RULE(r_coop25) { return P(bucket(f, {1, 2, 3, 4, 5}).coop, 25); }
+RULE(r_coop25) { return P(bucket(f, {1, 2}).coop, 25); }
 RULE(r_pg100) {
     return P(f.stat("MiscStats/OnlineInfectedGamesEntered") + f.stat("MiscStats/OnlineKingGamesEntered"), 100);
 }
@@ -310,35 +311,35 @@ const std::vector<Def> kDefs = {
     {"all_your_race", "All Your Race Are Belong To Us 2.0", "Complete all 168 Championships.", 50, G::Base, T::Save, "championships", r_champs_all},
     {"horizon_champion", "Horizon Champion", "Become the Horizon Champion.", 50, G::Base, T::Save, nullptr, r_champion},
     {"new_car_smell", "That New Car Smell", "Buy your first car.", 10, G::Base, T::Save, nullptr, r_new_car},
-    {"car_lover", "Car Lover", "Have 50 cars in your Garage.", 20, G::Base, T::Save, "cars", r_cars50},
-    {"worthy_sultan", "Worthy of a Sultan", "Have 175 cars in your Garage.", 40, G::Base, T::Save, "cars", r_cars175},
+    {"car_lover", "Car Lover", "Have 50 Cars in your Garage.", 20, G::Base, T::Save, "cars", r_cars50},
+    {"worthy_sultan", "Worthy of a Sultan", "Have 175 Cars in your Garage.", 40, G::Base, T::Save, "cars", r_cars175},
     {"license_to_skill", "License to Skill", "Earn 5 Skill Points.", 10, G::Base, T::Save, "skill points", r_skill5},
     {"stone_cold_skiller", "Stone Cold Skiller", "Earn 65 Skill Points.", 20, G::Base, T::Save, "skill points", r_skill65},
-    {"fast_and_clean", "Fast and Clean", "Earn the Clean Racing skill 100 times.", 10, G::Base, T::Events, "times", r_clean100},
+    {"fast_and_clean", "Fast and Clean", "Earn the Clean Racing Skill 100 times.", 10, G::Base, T::Events, "times", r_clean100},
     {"summer_sale", "Summer Sale", "Smash 25 Reward Boards.", 10, G::Base, T::Save, "boards", r_boards25},
     {"smash_happy", "Smash Happy", "Collect all Reward Boards.", 20, G::Base, T::Save, "boards", r_boards_all},
     {"human_gps", "Human GPS", "Drive down every road in the game.", 10, G::Base, T::Save, "roads", r_roads},
     {"storage_hunter", "Storage Hunter", "Restore 10 Barn Finds.", 20, G::Base, T::Save, "barn finds", r_barns10},
-    {"photographer", "Photographer", "Photograph 100 different cars for Horizon Promo.", 20, G::Base, T::Save, "cars", r_photos},
-    {"one_down", "One Down!", "Complete a Solo Bucket List challenge.", 10, G::Base, T::Save, "challenges", r_bucket1},
-    {"kick_the_bucket", "Kick the Bucket", "Scratch 15 items off your Solo Bucket List.", 10, G::Base, T::Save, "challenges", r_bucket15},
-    {"rest_in_peace", "Rest in Peace", "Complete every Solo Bucket List challenge.", 20, G::Base, T::Save, "challenges", r_bucket_all},
+    {"photographer", "Photographer", "Take photos of 100 different cars for Horizon Promo.", 20, G::Base, T::Save, "cars", r_photos},
+    {"one_down", "One Down!", "Complete a Solo Bucket List challenge from the first two Horizon Bucket Lists.", 10, G::Base, T::Save, "challenges", r_bucket1},
+    {"kick_the_bucket", "Kick the Bucket", "Scratch 15 items off the first two Horizon Bucket Lists.", 10, G::Base, T::Save, "challenges", r_bucket15},
+    {"rest_in_peace", "Rest in Peace", "Complete 30 Solo Bucket List Challenges from the first two Horizon Bucket Lists.", 20, G::Base, T::Save, "challenges", r_bucket30},
     {"rain_master", "Rain Master", "Complete your first race in the rain.", 10, G::Base, T::Save, nullptr, r_rain},
-    {"train_in_vain", "The Train's in Vain", "Beat the train in a Horizon Showcase event.", 10, G::Base, T::Save, nullptr, r_train},
-    {"multi_disciplined", "Multi-Disciplined", "Win an event in every type of car.", 10, G::Base, T::Save, "car types", r_car_types},
-    {"wild_drivatar", "A Wild Drivatar Appears!", "Win 3 Head-to-Head races against Drivatars with a bounty.", 10, G::Base, T::Save, "wins", r_wild_drivatar},
+    {"train_in_vain", "The Train's in Vain", "Beat the Train in a Horizon Showcase Event.", 10, G::Base, T::Save, nullptr, r_train},
+    {"multi_disciplined", "Multi-Disciplined", "Win an Event in every type of car.", 10, G::Base, T::Save, "car types", r_car_types},
+    {"wild_drivatar", "A Wild Drivatar Appears!", "Win 3 Head-to-Head Races against Drivatars with a Bounty on them.", 10, G::Base, T::Save, "wins", r_wild_drivatar},
     {"we_meet_again", "We Meet Again!", "Win a Showdown at every Car Meet.", 20, G::Base, T::Online, nullptr, nullptr},
-    {"friends_with_benefits", "Friends with Benefits", "Earn 1,000,000 Cr from Rivals.", 10, G::Base, T::Online, "Cr", r_rivals_credits},
-    {"super_meet_boy", "Super Meet Boy", "Get a livery and a tuning setup, buy a car and enter a Showdown at a Car Meet.", 10, G::Base, T::Online, nullptr, nullptr},
-    {"bragging_rights", "Bragging Rights", "Beat friends or club members on 20 Speed Cameras.", 10, G::Base, T::Online, nullptr, nullptr},
-    {"social_caterpillar", "Social Caterpillar", "Compete in 20 multiplayer events.", 10, G::Base, T::Online, "events", r_mp20},
-    {"social_butterfly", "Social Butterfly", "Compete in 200 multiplayer events.", 50, G::Base, T::Online, "events", r_mp200},
-    {"team_player", "Team Player", "Win 50 team events.", 30, G::Base, T::Online, "wins", r_team50},
-    {"loyal", "Loyal", "Earn 500,000 XP for your club.", 25, G::Base, T::Online, nullptr, nullptr},
+    {"friends_with_benefits", "Friends with Benefits", "Earn a total of 1,000,000 Cr from Rivals.", 10, G::Base, T::Online, "Cr", r_rivals_credits},
+    {"super_meet_boy", "Super Meet Boy", "Grab a livery, grab a tuning setup, buy a car, and enter a Showdown at any Car Meet.", 10, G::Base, T::Online, nullptr, nullptr},
+    {"bragging_rights", "Bragging Rights", "Beat Friends or Club members on any 20 Speed Cameras.", 10, G::Base, T::Online, nullptr, nullptr},
+    {"social_caterpillar", "Social Caterpillar", "Compete in 20 Multiplayer Events.", 10, G::Base, T::Online, "events", r_mp20},
+    {"social_butterfly", "Social Butterfly", "Compete in 200 Multiplayer Events.", 50, G::Base, T::Online, "events", r_mp200},
+    {"team_player", "Team Player", "Win 50 Team Events.", 30, G::Base, T::Online, "wins", r_team50},
+    {"loyal", "Loyal", "Earn 500,000 XP for your Club.", 25, G::Base, T::Online, nullptr, nullptr},
     {"on_the_road_again", "On the Road Again", "Complete an Online Road Trip location.", 10, G::Base, T::Online, "locations", r_online_trip1},
     {"well_travelled", "Well Travelled", "Complete 25 Online Road Trip locations.", 30, G::Base, T::Online, "locations", r_online_trip25},
-    {"yes_we_can", "Yes We Can", "Complete 25 Bucket List items co-operatively.", 30, G::Base, T::Online, "challenges", r_coop25},
-    {"you_are_pg", "You Are Playground Games", "Complete 100 Playground Games events.", 40, G::Base, T::Online, "events", r_pg100},
+    {"yes_we_can", "Yes We Can", "Complete 25 Bucket List items co-operatively from the first two Horizon Bucket Lists.", 30, G::Base, T::Online, "challenges", r_coop25},
+    {"you_are_pg", "You Are Playground Games", "Complete 100 Playground Games Events.", 40, G::Base, T::Online, "events", r_pg100},
 
     // ---- Storm Island: 23, 500G ----
     {"welcome_storm_island", "Welcome to Storm Island", "Arrive on Storm Island.", 20, G::StormIsland, T::Save, nullptr, r_island_arrive},
@@ -346,29 +347,29 @@ const std::vector<Def> kDefs = {
     {"high_five", "High Five", "Win 5 Storm Island Championships.", 20, G::StormIsland, T::Save, "championships", r_island_won5},
     {"go_back", "We Have to Go Back!", "Complete every Storm Island Championship.", 50, G::StormIsland, T::Save, "championships", r_island_all},
     {"storm_island_champion", "Storm Island Champion", "Win the Storm Island Finale.", 50, G::StormIsland, T::Save, nullptr, r_island_champion},
-    {"survive_gauntlet", "Survive the Gauntlet", "Complete your first Gauntlet event.", 20, G::StormIsland, T::Save, "Gauntlets", r_gauntlet1},
-    {"gauntlet_runner", "Gauntlet Runner", "Win every Gauntlet event.", 30, G::StormIsland, T::Save, "Gauntlets", r_gauntlet_all},
-    {"island_explorer", "Island Explorer", "Drive every road on Storm Island.", 25, G::StormIsland, T::Save, "roads", r_island_roads},
+    {"survive_gauntlet", "Survive the Gauntlet", "Complete your first Gauntlet Event.", 20, G::StormIsland, T::Save, "Gauntlets", r_gauntlet1},
+    {"gauntlet_runner", "Gauntlet Runner", "Win every Gauntlet Event.", 30, G::StormIsland, T::Save, "Gauntlets", r_gauntlet_all},
+    {"island_explorer", "Island Explorer", "Drive every Road on Storm Island.", 25, G::StormIsland, T::Save, "roads", r_island_roads},
     {"smash_em_all", "Gotta Smash Em All!", "Collect every Storm Island Bonus Board.", 25, G::StormIsland, T::Save, "boards", r_island_boards},
-    {"tick", "Tick!", "Complete your first Storm Island Bucket List challenge.", 10, G::StormIsland, T::Save, "challenges", r_island_bucket1},
-    {"another_life", "See You in Another Life!", "Complete every Storm Island Bucket List challenge.", 25, G::StormIsland, T::Save, "challenges", r_island_bucket_all},
-    {"castaways", "Castaways", "Complete every co-op Storm Island Bucket List challenge.", 30, G::StormIsland, T::Online, "challenges", r_island_coop_all},
-    {"tropical_treasure", "Tropical Treasure", "Find and restore the Barn Find on Storm Island.", 25, G::StormIsland, T::Save, nullptr, r_island_barn},
-    {"skills_for_thrills", "Skills for Thrills", "Bank a 100,000-point skill chain on Storm Island.", 20, G::StormIsland, T::Events, "points", r_island_chain},
+    {"tick", "Tick!", "Complete your first Storm Island Bucket List Challenge.", 10, G::StormIsland, T::Save, "challenges", r_island_bucket1},
+    {"another_life", "See You in Another Life!", "Complete every Storm Island Bucket List Challenge.", 25, G::StormIsland, T::Save, "challenges", r_island_bucket_all},
+    {"castaways", "Castaways", "Complete every Co-op Storm Island Bucket List Challenge.", 30, G::StormIsland, T::Online, "challenges", r_island_coop_all},
+    {"tropical_treasure", "Tropical Treasure", "Find and restore a Barn Find on Storm Island.", 25, G::StormIsland, T::Save, nullptr, r_island_barn},
+    {"skills_for_thrills", "Skills for Thrills", "Bank a Skill Chain of 100,000 points on Storm Island.", 20, G::StormIsland, T::Events, "points", r_island_chain},
     {"storm_breaker", "Storm Breaker", "Win 5 events in stormy conditions.", 20, G::StormIsland, T::Save, "events", r_storm_wins},
-    {"ready_to_bounce", "Ready to Bounce", "Start a race on Storm Island with off-road tyres, suspension and transmission.", 10, G::StormIsland, T::Events, nullptr, r_ready_to_bounce},
-    {"fiesta_fun", "Fiesta Fun", "Win an event in the 1981 Ford Fiesta.", 10, G::StormIsland, T::Events, nullptr, r_fiesta},
-    {"galant_great", "Galant Great", "Win an event in the Mitsubishi Galant VR-4.", 10, G::StormIsland, T::Events, nullptr, r_galant},
-    {"metro_master", "Metro Master", "Win an event in the MG Metro 6R4.", 10, G::StormIsland, T::Events, nullptr, r_metro},
-    {"ranger_rock_star", "Ranger Rock Star", "Win an event in the Ford Ranger T6.", 10, G::StormIsland, T::Events, nullptr, r_ranger},
-    {"stadium_star", "Stadium Star", "Win an event in the Robby Gordon #7 SST.", 10, G::StormIsland, T::Events, nullptr, r_sst},
+    {"ready_to_bounce", "Ready to Bounce", "Start a race with Off-Road tires, suspension, and transmission on Storm Island.", 10, G::StormIsland, T::Events, nullptr, r_ready_to_bounce},
+    {"fiesta_fun", "Fiesta Fun", "Win an event in the '81 Ford Fiesta.", 10, G::StormIsland, T::Events, nullptr, r_fiesta},
+    {"galant_great", "Galant Great", "Win an Event in the Mitsubishi Galant.", 10, G::StormIsland, T::Events, nullptr, r_galant},
+    {"metro_master", "Metro Master", "Win an event in the MG Metro R4.", 10, G::StormIsland, T::Events, nullptr, r_metro},
+    {"ranger_rock_star", "Ranger Rock Star", "Win an event in the Ford Ranger.", 10, G::StormIsland, T::Events, nullptr, r_ranger},
+    {"stadium_star", "Stadium Star", "Win an Event in the Robby Gordon #7 SST.", 10, G::StormIsland, T::Events, nullptr, r_sst},
     {"meet_and_beat", "Meet and Beat", "Visit the Storm Island Car Meet and win 3 Showdowns.", 20, G::StormIsland, T::Online, nullptr, nullptr},
-    {"horizon_5_0", "Horizon 5-0", "Complete 50 online events on Storm Island.", 30, G::StormIsland, T::Online, nullptr, nullptr},
+    {"horizon_5_0", "Horizon 5-0", "Complete 50 Online Events on Storm Island.", 30, G::StormIsland, T::Online, nullptr, nullptr},
 
     // ---- Porsche Expansion: 15, 500G ----
-    {"porsche_owners_club", "Porsche Owners Club", "Own your first Porsche.", 25, G::Porsche, T::Save, nullptr, r_porsche_owned},
-    {"porsche_rookie", "Porsche Rookie", "Tick off 5 items on the Porsche Bucket List.", 25, G::Porsche, T::Save, "challenges", r_porsche_bucket5},
-    {"porsche_pro", "Porsche Pro", "Complete the Porsche Bucket List.", 50, G::Porsche, T::Save, "challenges", r_porsche_bucket_all},
+    {"porsche_owners_club", "Porsche Owners Club", "Obtain your first Porsche.", 25, G::Porsche, T::Save, nullptr, r_porsche_owned},
+    {"porsche_rookie", "Porsche Rookie", "Tick off 5 items on the Porsche Bucket List", 25, G::Porsche, T::Save, "challenges", r_porsche_bucket5},
+    {"porsche_pro", "Porsche Pro", "Complete the Porsche Bucket List", 50, G::Porsche, T::Save, "challenges", r_porsche_bucket_all},
     {"horse_power", "Horse Power", "Complete 40 events in Porsches.", 100, G::Porsche, T::Events, "events", r_porsche40},
     {"air_cooled", "Air Cooled Competitor", "Complete 4 events in the 1970 Porsche 914/6.", 30, G::Porsche, T::Events, "events", r_914},
     {"cajun_kickin", "Cajun Kickin'", "Complete 4 events in the 2015 Porsche Macan Turbo.", 30, G::Porsche, T::Events, "events", r_macan},
@@ -376,11 +377,11 @@ const std::vector<Def> kDefs = {
     {"ring_wraith", "Ring Wraith", "Complete 4 events in the 2014 Porsche 918 Spyder.", 30, G::Porsche, T::Events, "events", r_918},
     {"show_and_display", "Show and Display", "Complete 4 events in the 1987 Porsche 959.", 30, G::Porsche, T::Events, "events", r_959},
     {"this_is_my_porsche", "This Is My Porsche", "Complete 10 events in the same Porsche.", 50, G::Porsche, T::Events, "events", r_same_porsche},
-    {"animal", "Animal!", "Pull off 20 Drift skills in the 2015 Porsche Cayman GTS.", 20, G::Porsche, T::Events, "drifts", r_cayman_drifts},
-    {"call_911", "Call 911", "Pull off 30 Near Miss skills in the Porsche 911 Turbo S.", 20, G::Porsche, T::Events, "near misses", r_turbo_s_near_miss},
-    {"cup_car", "Cup Car", "Earn 25,000 Cr in Rivals with the Porsche 911 GT3 RS 4.0.", 20, G::Porsche, T::Online, "Cr", r_cup_car},
-    {"no_airbag", "No Airbag Required", "Earn 20 Clean Racing skills in the 1989 Porsche 944 Turbo.", 20, G::Porsche, T::Events, "skills", r_944_clean},
-    {"widow_maker", "Widow Maker", "Win a race in the wet in the 1982 Porsche 911 Turbo 3.3.", 20, G::Porsche, T::Events, nullptr, r_widow_maker},
+    {"animal", "Animal!", "Pull off 20 Drifts in the 2015 Porsche Cayman GTS.", 20, G::Porsche, T::Events, "drifts", r_cayman_drifts},
+    {"call_911", "Call 911", "Pull off 30 Near Miss Skills in the Porsche 911 Turbo S.", 20, G::Porsche, T::Events, "near misses", r_turbo_s_near_miss},
+    {"cup_car", "Cup Car", "Earn 25,000 Credits in Rivals Mode with the Porsche 911 GT3 RS 4.0.", 20, G::Porsche, T::Online, "Cr", r_cup_car},
+    {"no_airbag", "No Airbag Required", "Earn 20 Clean Racer Skills in the 1989 Porsche 944 Turbo.", 20, G::Porsche, T::Events, "skills", r_944_clean},
+    {"widow_maker", "Widow Maker", "Win a race in the wet in a 1982 Porsche 911 Turbo 3.3.", 20, G::Porsche, T::Events, nullptr, r_widow_maker},
 };
 
 }  // namespace

@@ -507,9 +507,7 @@ void write_list(const std::wstring& path, const Facts& f, const Store& s) {
                     std::snprintf(pr, sizeof pr, "  [%.0f / %.0f %s]", p.have, p.need, d.unit);
                     o << pr;
                 }
-                if (d.track == Track::Online) o << "  (requires online play)";
-                else if (d.track == Track::Pending) o << "  (not tracked yet)";
-                else if (d.track == Track::Events) o << "  (counts from when the mod was installed)";
+                if (d.track == Track::Online) o << "  (online only)";
             }
             o << '\n';
         }

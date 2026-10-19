@@ -237,13 +237,13 @@ std::string card_xaml(const Card& c, const std::string& name, const std::map<std
         case kLocked:
             if (c.measured) {
                 show_bar = true;
-                status   = number(c.p.have) + " / " + number(c.p.need) + " " + d.unit + (d.track == Track::Events ? " since install" : "");
+                status   = number(c.p.have) + " / " + number(c.p.need) + " " + d.unit;
             } else {
-                status = d.track == Track::Events ? "LOCKED - counts from when the mod was installed" : "LOCKED";
+                status = "LOCKED";
             }
             break;
-        case kOnline: status = "ONLINE ONLY - locked for now"; break;
-        case kPending: status = "NOT TRACKED YET - locked for now"; break;
+        case kOnline: status = "ONLINE ONLY"; break;
+        case kPending: status = "LOCKED"; break;
     }
     std::string x;
     x += "                                    <Button x:Name=\"" + name + "\" Template=\"{StaticResource Ach_Plain}\">\r\n";
