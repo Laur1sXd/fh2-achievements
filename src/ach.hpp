@@ -162,16 +162,22 @@ bool read_revision(const std::wstring& revisionDir, const std::wstring& scratch,
                    std::string& why);
 bool read_game_data(const std::wstring& gameDir, GameData& out, std::string& why);
 
-// ---- the in-game page (page.cpp) -------------------------------------------------------------
+// ---- the in-game page (ui.cpp) -------------------------------------------------------------
 
-// One row of the Achievements page, as the platform's FH2PageRow (style is FH2_ROW_...).
-struct PageRow {
-    std::string key, label, value, description, footer;
-    int style = 0;
+// The Achievements page, as the platform's set_page_xaml takes it: XAML of the mod's own design.
+struct PageXaml {
+    std::string resources, content, help;
 };
-// The page's rows: a summary, then each group under a heading. `f` is null until a save has
-// been read (then there's no progress to show); `unlocked` is id -> when.
-std::vector<PageRow> page_rows(const Facts* f, const std::map<std::string, std::string>& unlocked);
+// The page: its sections on the left, the selected one's achievements on the right. `f` is null
+// until a save has been read (then there's no progress to show); `unlocked` is id -> when.
+PageXaml page_xaml(const Facts* f, const std::map<std::string, std::string>& unlocked);
+// The page's sections, in order (slot 0 is the selected one; the first is the recent unlocks).
+std::vector<std::string> section_titles();
+// "" if every achievement is in exactly one section, otherwise what's wrong.
+std::string section_check();
+// The page's slots (FH2Mod_Slot_<n> in its XAML).
+constexpr int kSlotSection = 0;   // the section selected on the left
+constexpr int kSlotPane    = 1;   // where the focus is: 0 the sections, 1 the selected one's achievements
 
 // ---- SQLite (Windows' own winsqlite3.dll) ----------------------------------------------------
 

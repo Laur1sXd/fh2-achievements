@@ -28,7 +28,7 @@ configure_file(cmake/version.h.in ${CMAKE_BINARY_DIR}/generated/fh2_version.h)
 # The mod: fh2-mods\Achievements.dll
 add_library(achievements SHARED
     src/achievements.cpp
-    src/page.cpp
+    src/ui.cpp
     src/rules.cpp
     src/save_reader.cpp
     src/sqlite.cpp

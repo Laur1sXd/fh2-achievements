@@ -428,21 +428,25 @@ bool g_pageOn = false;   // the platform has pages, and ours was added
 
 void push_page(const Facts* f, const Store& s) {
     if (!g_pageOn) return;
-    const std::vector<PageRow> rows = page_rows(f, s.unlocked);
-    std::vector<FH2PageRow> out;
-    out.reserve(rows.size());
-    for (const PageRow& r : rows) {
-        FH2PageRow p{};
-        p.size        = sizeof p;
-        p.key         = r.key.empty() ? nullptr : r.key.c_str();
-        p.label       = r.label.c_str();
-        p.value       = r.value.c_str();
-        p.description = r.description.c_str();
-        p.footer      = r.footer.c_str();
-        p.style       = r.style;
-        out.push_back(p);
+    const PageXaml x = page_xaml(f, s.unlocked);
+    if (!g_api->set_page_xaml(g_mod, "List", x.resources.c_str(), x.content.c_str(), x.help.c_str())) logf("the page's XAML was refused");
+}
+
+// A on a section: into its achievements. B there: back to the section. B on the sections leaves.
+int on_page_button(void*, const char* key, int button) {
+    const int pane = g_api->get_page_slot(g_mod, key, kSlotPane), sec = g_api->get_page_slot(g_mod, key, kSlotSection);
+    if (button == FH2_BUTTON_A) {
+        if (pane != 0) return FH2_PAGE_HANDLED;
+        if (!g_api->focus_page_element(g_mod, key, ("Ach_Card_" + std::to_string(sec) + "_0").c_str())) return FH2_PAGE_HANDLED;
+        g_api->set_page_slot(g_mod, key, kSlotPane, 1);
+        return FH2_PAGE_HANDLED_SELECT;
     }
-    g_api->set_page_rows(g_mod, "List", out.data(), static_cast<uint32_t>(out.size()));
+    if (button == FH2_BUTTON_B && pane == 1) {
+        g_api->focus_page_element(g_mod, key, sec == 0 ? "FirstItem" : ("Ach_Sec_" + std::to_string(sec)).c_str());
+        g_api->set_page_slot(g_mod, key, kSlotPane, 0);
+        return FH2_PAGE_HANDLED_BACK;
+    }
+    return FH2_PAGE_IGNORED;
 }
 
 // fh2-mods\Achievements\Achievements.txt: the same list as a text file.
@@ -696,9 +700,10 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     s.on_change   = &on_setting;
     api->add_setting(g_mod, &s);
 
-    // The page: on the pause menu's ACHIEVEMENTS tile (and the Storm Island tab's), and under
-    // MODS > Installed mods > Achievements. Its rows come from the worker.
+    // The page: on the pause menu's ACHIEVEMENTS tile (and the Storm Island tab's), of the mod's
+    // own design. Its XAML comes from the worker.
     if (api->api_version >= 8) {
+        if (const std::string bad = section_check(); !bad.empty()) logf("the page's sections are wrong: %s", bad.c_str());
         FH2Page p{};
         p.size        = sizeof p;
         p.key         = "List";
@@ -706,13 +711,11 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
         p.label       = "Achievements list";
         p.description = "Every achievement, unlocked or not, with your progress towards the locked ones.";
         p.tile        = "Achievements";
+        p.on_button   = &on_page_button;
         g_pageOn      = api->add_page(g_mod, &p) != 0;
         if (g_pageOn) {
-            FH2PageRow r{};
-            r.size        = sizeof r;
-            r.label       = "Not ready yet";
-            r.description = "The list shows once the game has loaded your profile. Try again in a moment.";
-            api->set_page_rows(g_mod, "List", &r, 1);
+            Store none;
+            push_page(nullptr, none);   // until the profile's been read: nothing unlocked
         }
     }
 
