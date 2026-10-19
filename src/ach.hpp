@@ -40,6 +40,7 @@ struct GameData {
 struct SaveFacts {
     bool ok = false;
     std::string revision;                                  // its folder name
+    std::string pdbSha;                                    // PlayerDatabase's SHA-256 (from the commit file)
     std::map<std::string, double> stats;                   // ProfileData: "Main/XP" -> value
     std::map<std::string, std::map<std::string, std::string>> objects;   // SaveState: id -> property -> value
     std::map<std::string, std::string> objectType;         // SaveState: id -> type
@@ -137,7 +138,7 @@ struct Event {
 // Event ids (the ETX descriptor's low 16 bits) this mod uses.
 namespace ev {
 constexpr uint16_t AnthemRaceEnd = 6, CarPurchased = 19, DistanceDrivenDelta = 33, IslandRewardBoardSmashed = 54,
-                   IslandSkillChainCompleted = 57, RaceEncounterEnd = 97, RaceStartParts = 101,
+                   IslandRoadsDriven = 55, IslandSkillChainCompleted = 57, RaceEncounterEnd = 97, RaceStartParts = 101,
                    RewardBoardSmashed = 103, SkillAchieved = 115, SkillChainCompleted = 116, WristbandGained = 129,
                    XPGained = 131;
 }
@@ -155,8 +156,10 @@ bool find_user_dir(const std::wstring& azimuthDir, std::wstring& userDir, std::w
 std::vector<std::wstring> list_revisions(const std::wstring& userDir);
 // Reads one revision. Its files are checked against its commit manifest first, so a revision
 // the game is still writing is refused (try again later). `scratch` is a folder of ours for the
-// copy of the database SQLite reads.
-bool read_revision(const std::wstring& revisionDir, const std::wstring& scratch, SaveFacts& out, std::string& why);
+// copy of the database SQLite reads. With `prev` (the last revision read), an unchanged database
+// isn't read again.
+bool read_revision(const std::wstring& revisionDir, const std::wstring& scratch, const SaveFacts* prev, SaveFacts& out,
+                   std::string& why);
 bool read_game_data(const std::wstring& gameDir, GameData& out, std::string& why);
 
 // ---- SQLite (Windows' own winsqlite3.dll) ----------------------------------------------------

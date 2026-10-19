@@ -168,6 +168,7 @@ bool wanted(uint16_t id) {
         case ev::SkillAchieved:
         case ev::SkillChainCompleted:
         case ev::IslandSkillChainCompleted:
+        case ev::IslandRoadsDriven:
             return true;
         default:
             return false;
@@ -182,7 +183,7 @@ bool research(uint16_t id) {
         case 14: case 47:                     // bucket list challenge ends
         case 17: case 18:                     // car meets
         case 20: case 21: case 50: case 51:   // championships
-        case 34: case 41: case 49: case 55:   // DroveToDestination, champions, IslandRoadsDriven
+        case 34: case 41: case 49:            // DroveToDestination, champions
         case ev::RaceEncounterEnd:
         case ev::RaceStartParts:
         case ev::WristbandGained:
@@ -537,7 +538,7 @@ DWORD WINAPI worker(LPVOID) {
                     continue;
                 }
                 SaveFacts next;
-                if (read_revision(userDir + L"\\revisions\\" + rev, g_dir + L"\\cache", next, why)) {
+                if (read_revision(userDir + L"\\revisions\\" + rev, g_dir + L"\\cache", &save, next, why)) {
                     save = std::move(next);
                     dirty = true;
                     logf("read save revision %s: %zu stats, %zu objects, %zu cars, %zu championships done", r.c_str(),

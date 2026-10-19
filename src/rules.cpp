@@ -17,6 +17,8 @@
 //    Porsche 911 Turbo 3.3 265, 914/6 266, 944 Turbo 268, 959 269, Carrera GT 292, 911 Turbo S
 //    2289, 918 Spyder 2290, Cayman GTS 2293, Macan Turbo 2295, 911 GT3 RS 4.0 2297.
 //  - Skills: "Clean Racing" is the FastAndClean skill (RaceFeats strings IDS_FastAndClean1-4).
+//  - Storm Island has 50 roads: its IslandRoadsDriven event (sent with the roads found and the
+//    total, 0x1409C1010) reported "all found" at 50.
 #include "ach.hpp"
 
 #include <algorithm>
@@ -44,7 +46,7 @@ Progress Flag(bool b) { return {b ? 1.0 : 0.0, 1}; }
 
 constexpr double kGreenXP = 210000, kPinkXP = 810000, kPurpleXP = 1410000, kGoldXP = 2910000;
 constexpr int kTrainInVain = 92, kHorizonFinale = 201, kIslandFinale = 937;
-constexpr int kMainlandRoads = 315;
+constexpr int kMainlandRoads = 315, kIslandRoads = 50;
 
 bool won_event(const Facts& f, int event) {
     auto it = f.save.eventPlace.find(event);
@@ -186,6 +188,9 @@ RULE(r_gauntlet_all) {
     for (int c : f.gd.gauntletCampaigns) n += f.save.islandChampsWon.count(c);
     return P(n, f.gd.gauntletCampaigns.empty() ? 6 : f.gd.gauntletCampaigns.size());
 }
+RULE(r_island_roads) {
+    return P(f.ctr.get("island.roads.all") ? kIslandRoads : f.stat("Island/RoadsDiscovered"), kIslandRoads);
+}
 RULE(r_island_boards) {
     auto b = boards(f, true);
     return P(b.have, b.total ? b.total : 25);
@@ -299,7 +304,7 @@ const std::vector<Def> kDefs = {
     {"storm_island_champion", "Storm Island Champion", "Win the Storm Island Finale.", 50, G::StormIsland, T::Save, nullptr, r_island_champion},
     {"survive_gauntlet", "Survive the Gauntlet", "Complete your first Gauntlet event.", 20, G::StormIsland, T::Save, "Gauntlets", r_gauntlet1},
     {"gauntlet_runner", "Gauntlet Runner", "Win every Gauntlet event.", 30, G::StormIsland, T::Save, "Gauntlets", r_gauntlet_all},
-    {"island_explorer", "Island Explorer", "Drive every road on Storm Island.", 25, G::StormIsland, T::Pending, nullptr, nullptr},
+    {"island_explorer", "Island Explorer", "Drive every road on Storm Island.", 25, G::StormIsland, T::Save, "roads", r_island_roads},
     {"smash_em_all", "Gotta Smash Em All!", "Collect every Storm Island Bonus Board.", 25, G::StormIsland, T::Save, "boards", r_island_boards},
     {"tick", "Tick!", "Complete your first Storm Island Bucket List challenge.", 10, G::StormIsland, T::Save, "challenges", r_island_bucket1},
     {"another_life", "See You in Another Life!", "Complete every Storm Island Bucket List challenge.", 25, G::StormIsland, T::Save, "challenges", r_island_bucket_all},
@@ -365,6 +370,10 @@ bool count_event(const Event& e, const GameData& gd, Counters& c, LiveFacts& liv
             return true;
         case ev::IslandSkillChainCompleted:
             c.raise("chain.island.best", e.i(3));
+            return true;
+        case ev::IslandRoadsDriven:       // [3] roads found, [4] all found, [5] percent
+            if (!e.i(4)) return false;
+            c.raise("island.roads.all", 1);
             return true;
         case ev::AnthemRaceEnd: {
             // [8] car, [9] exit status (0 = finished), [10] time, [11] place (1 = won), [12] event,

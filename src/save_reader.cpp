@@ -320,7 +320,8 @@ std::vector<std::wstring> list_revisions(const std::wstring& userDir) {
     return out;
 }
 
-bool read_revision(const std::wstring& revDir, const std::wstring& scratch, SaveFacts& out, std::string& why) {
+bool read_revision(const std::wstring& revDir, const std::wstring& scratch, const SaveFacts* prev, SaveFacts& out,
+                   std::string& why) {
     out = SaveFacts{};
     std::string commit;
     if (!read_file(revDir + L"\\commit", commit)) {
@@ -354,15 +355,32 @@ bool read_revision(const std::wstring& revDir, const std::wstring& scratch, Save
             why = std::string(names[i]) + " isn't in the commit file";
             return false;
         }
+        // The database (6 MB) changes far less often than the save is written: when its hash is
+        // the one already read, its tables are taken from the last read instead.
+        if (i == 2 && prev && prev->ok && prev->pdbSha == it->second.first) {
+            out.pdbSha = prev->pdbSha;
+            continue;
+        }
         if (!read_file(revDir + L"\\data\\" + std::wstring(names[i], names[i] + std::strlen(names[i])), files[i]) ||
             files[i].size() != it->second.second || sha256_hex(files[i]) != it->second.first) {
             why = std::string(names[i]) + " doesn't match the commit file (still being written?)";
             return false;
         }
+        if (i == 2) out.pdbSha = it->second.first;
     }
-    if (!parse_savestate(files[0], out, why) || !parse_profile(files[1], out, why) ||
-        !read_player_db(files[2], scratch, out, why))
+    if (!parse_savestate(files[0], out, why) || !parse_profile(files[1], out, why)) return false;
+    if (files[2].empty()) {
+        out.champsCompleted = prev->champsCompleted;
+        out.champsWon = prev->champsWon;
+        out.islandChampsCompleted = prev->islandChampsCompleted;
+        out.islandChampsWon = prev->islandChampsWon;
+        out.eventPlace = prev->eventPlace;
+        out.garage = prev->garage;
+        out.photos = prev->photos;
+        out.bucket = prev->bucket;
+    } else if (!read_player_db(files[2], scratch, out, why)) {
         return false;
+    }
     out.revision = narrow(revDir.substr(revDir.find_last_of(L'\\') + 1));
     out.ok = true;
     return true;
