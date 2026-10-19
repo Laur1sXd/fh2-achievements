@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdarg>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -449,6 +450,8 @@ void push_page(const Facts* f, const Store& s) {
         return t;
     };
     const std::string text = thousands(got) + " / " + thousands(all) + "G";
+    // the tile's text and colours came with platform 2.7.0's API 8
+    if (g_api->size < offsetof(FH2ModApi, set_page_tile_colors) + sizeof(void*)) return;
     if (text != g_tileText) {
         if (g_api->set_page_tile_text(g_mod, "List", text.c_str())) g_tileText = text;
         else logf("the tile's text was refused");
@@ -745,10 +748,22 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     if (!api || api->api_version < 7) return 1;
     g_api = api;
     g_t0 = GetTickCount64();
+    // settings, with a commented file the first time
+    g_iniPath = std::wstring(api->azimuth_dir) + L"\\fh2-mods\\Achievements.ini";
+    if (GetFileAttributesW(g_iniPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+        std::ofstream(g_iniPath.c_str(), std::ios::binary)
+            << "; Achievements (fh2-mods\\Achievements.ini). Delete this file to get the defaults back.\r\n"
+               "[Achievements]\r\n"
+               "; 0 = no pop-up when you unlock an achievement (also under Pause > Settings > MODS)\r\n"
+               "Popups=1\r\n"
+               "; 0 = don't check GitHub for a newer version\r\n"
+               "CheckUpdates=1\r\n";
     FH2ModInfo info{};
     info.size             = sizeof info;
     info.name             = "Achievements";
     info.version          = ACH_VERSION;
+    info.github_repo      = "Trinculo54/fh2-achievements";
+    info.check_updates    = GetPrivateProfileIntW(L"Achievements", L"CheckUpdates", 1, g_iniPath.c_str());
     info.platform_version = FH2MOD_PLATFORM_VERSION;
     info.description      = "Forza Horizon 2's 88 achievements, earned offline, with the game's own pop-up. Progress "
                             "already in your save counts. The pause menu's ACHIEVEMENTS tile lists them all.";
@@ -760,7 +775,6 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     g_dir     = g_azimuth + L"\\fh2-mods\\Achievements";
     CreateDirectoryW(g_dir.c_str(), nullptr);
     CreateDirectoryW((g_dir + L"\\cache").c_str(), nullptr);
-    g_iniPath = g_azimuth + L"\\fh2-mods\\Achievements.ini";
     g_logPath = g_dir + L"\\Achievements.log";
     HANDLE h = CreateFileW(g_logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
