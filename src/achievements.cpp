@@ -456,6 +456,18 @@ int on_page_button(void*, const char* key, int button) {
         g_api->focus_page_element(g_mod, key, sec == 0 ? "FirstItem" : ("Ach_Sec_" + std::to_string(sec)).c_str());
         return FH2_PAGE_HANDLED_BACK;
     }
+    // LB and RB: the section before or after, wherever the focus is (on the cards, it stays on them)
+    if (button == FH2_BUTTON_LB || button == FH2_BUTTON_RB) {
+        const int next = sec + (button == FH2_BUTTON_RB ? 1 : -1);
+        if (next < 0 || next >= static_cast<int>(section_titles().size())) return FH2_PAGE_HANDLED;
+        if (pane == 0) {   // the section list follows the focus, and the cards follow it (on_page_slot)
+            g_api->focus_page_element(g_mod, key, next == 0 ? "FirstItem" : ("Ach_Sec_" + std::to_string(next)).c_str());
+        } else {           // the cards: the next section's, from the top
+            g_api->set_page_slot(g_mod, key, kSlotSection, next);
+            g_api->focus_page_element(g_mod, key, ("Ach_Card_" + std::to_string(next) + "_0").c_str());
+        }
+        return FH2_PAGE_HANDLED_SELECT;
+    }
     return FH2_PAGE_IGNORED;
 }
 

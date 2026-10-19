@@ -438,12 +438,17 @@ PageXaml page_xaml(const Facts* f, const std::map<std::string, std::string>& unl
 
     // the help bar: on the sections, A goes into them; on the cards, B comes back
     const std::string pane = "FH2Mod_Slot_" + std::to_string(kSlotPane);
+    // LB and RB: the section before and after (achievements.cpp)
+    const std::string bumpers = "                    local:ControllerButtonPanel.LBumperDescription=\"{local:Loc HelpButtons.IDS_Previous}\"\r\n"
+                                "                    local:ControllerButtonPanel.RBumperDescription=\"{local:Loc HelpButtons.IDS_Next}\"\r\n";
     x.help = "<ContentControl x:Name=\"DefaultHelpPanel\" Visibility=\"{Binding " + pane + "_Is_0, Converter={StaticResource FH2Mod_ShowIf}}\"\r\n"
              "                    local:ControllerButtonPanel.ADescription=\"{local:Loc HelpButtons.IDS_Select}\"\r\n"
-             "                    local:ControllerButtonPanel.BDescription=\"{local:Loc HelpButtons.IDS_Back}\"\r\n"
+             "                    local:ControllerButtonPanel.BDescription=\"{local:Loc HelpButtons.IDS_Back}\"\r\n" +
+             bumpers +
              "                    Style=\"{StaticResource A_Style_ContentControl_DefaultButtonBar}\" />\r\n"
              "<ContentControl x:Name=\"Ach_HelpCards\" Visibility=\"{Binding " + pane + "_Is_1, Converter={StaticResource FH2Mod_ShowIf}}\"\r\n"
-             "                    local:ControllerButtonPanel.BDescription=\"{local:Loc HelpButtons.IDS_Back}\"\r\n"
+             "                    local:ControllerButtonPanel.BDescription=\"{local:Loc HelpButtons.IDS_Back}\"\r\n" +
+             bumpers +
              "                    Style=\"{StaticResource A_Style_ContentControl_DefaultButtonBar}\" />";
     // without the indentation (a third of it): less for the game to read each time it opens
     for (std::string* part : {&x.resources, &x.content, &x.help}) {
