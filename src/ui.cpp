@@ -186,6 +186,8 @@ std::string resources() {
     r += text_style("Ach_Text_Desc_Locked", "A_Style_FZTextBlock_Body", "#FF8C8C8C");
     r += text_style("Ach_Text_Status", "A_Style_FZTextBlock_Heading_Minimum", "#FF8C8C8C");
     r += text_style("Ach_Text_Status_Done", "A_Style_FZTextBlock_Heading_Minimum", orange);
+    // ONLINE ONLY: salmon, to stand out from the grey without looking like the unlocked orange
+    r += text_style("Ach_Text_Status_Online", "A_Style_FZTextBlock_Heading_Minimum", "#FFFA8072");
     r += text_style("Ach_Text_Score", "A_Style_FZTextBlock_Heading_Small", "#FF212121");
     r += text_style("Ach_Text_Score_Locked", "A_Style_FZTextBlock_Heading_Small", "#FFA0A0A0");
     r += material_style("Ach_Bar_Track", "#FFD9D9D9", "#66FFFFFF");
@@ -242,7 +244,10 @@ std::string card_xaml(const Card& c, const std::string& name, const std::map<std
                 status = "LOCKED";
             }
             break;
-        case kOnline: status = "ONLINE ONLY"; break;
+        case kOnline:
+            status       = "ONLINE ONLY";
+            status_style = "Ach_Text_Status_Online";
+            break;
         case kPending: status = "LOCKED"; break;
     }
     std::string x;
