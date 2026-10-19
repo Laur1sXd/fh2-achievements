@@ -23,9 +23,20 @@
 //    AnthemEventRaces. 86 of the mainland's 672 championship races are in the rain, 35 of Storm
 //    Island's 89; the storms are presets StormB (mainland) and StormTropical (Storm Island). The
 //    save's Career_EventResults says which events were finished and the best place.
+//  - Head-to-Head: RaceEncounterEnd (sent at 0x1409CD6F2) has [5] 1 for a win and [6] the
+//    rareSpawn flag, which is the bounty Drivatar (a bounty win logged [6] 1).
+//  - Road Trip: RoadTripCreated is sent for the RoadTripDestinationSelected message, which only
+//    the destination screen (0x140E896B0) posts, as it sets CareerState.UserSelectedNextLocation.
+//  - Rally parts: the game checks a car for Storm Island at 0x140E5C959 by its springs and
+//    dampers level 4, tyre level 5 and transmission level 4 (the Rally parts in
+//    List_Upgrade*.Level); RaceStartParts sends those same three at each race start.
+//  - Showdowns are wager races, launched from a Car Meet into a network session (the car meet
+//    states' targets are WagerRace, OnlineFreeRoam, OnlineRoadTrip...), so they need online play.
+//    Rivals races ghosts from the leaderboards, also online; RivalsEnd has [7] car, [10] credits.
 #include "ach.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace ach {
 
@@ -174,12 +185,23 @@ RULE(r_storm_wins) {
     return P(n, 5);
 }
 RULE(r_widow_maker) { return Flag(f.ctr.get("win.wet.265") > 0); }
+// Choosing the Road Trip's next stop: the game's RoadTripCreated event, sent only from the
+// destination screen (RoadTripDestinationSelect) when a destination is picked there.
+RULE(r_horizon_leader) { return Flag(f.ctr.get("roadtrip.chosen") > 0); }
+// Bounty Head-to-Heads won: RaceEncounterEnd with its rareSpawn flag, since the mod was installed.
+// For the ones before, the save's count of the bounty-win dialogue (it plays on a bounty win; it
+// can only undercount, so the larger of the two is taken).
+RULE(r_wild_drivatar) {
+    const int64_t said = std::atoll(f.prop("DIALOGUE_BountyWin", "PlayCount").c_str());
+    return P(static_cast<double>(std::max(f.ctr.get("h2h.bounty.won"), said)), 3);
+}
 
 RULE(r_car_types) {
     return P(car_types_won(f), f.gd.mainlandBuckets.empty() ? 28 : f.gd.mainlandBuckets.size());
 }
 // Online play: still counted from the profile's stats, in case online play comes back.
 RULE(r_rivals_credits) { return P(f.stat("CompareStats/CreditsEarnedFromRivals"), 1000000); }
+RULE(r_cup_car) { return P(static_cast<double>(f.ctr.get("rivals.cr.2297")), 25000); }
 RULE(r_mp20) { return P(f.stat("MiscStats/OnlineEventsFinished"), 20); }
 RULE(r_mp200) { return P(f.stat("MiscStats/OnlineEventsFinished"), 200); }
 RULE(r_team50) { return P(f.stat("MiscStats/OnlineTeamRacesWon"), 50); }
@@ -195,6 +217,10 @@ RULE(r_island_arrive) { return Flag(f.prop("islandiestate", "IEState") == "Compl
 RULE(r_island_won1) { return P(f.save.islandChampsWon.size(), 1); }
 RULE(r_island_won5) { return P(f.save.islandChampsWon.size(), 5); }
 RULE(r_island_all) { return P(f.save.islandChampsCompleted.size(), f.gd.islandCampaigns ? f.gd.islandCampaigns : 30); }
+// The game's own test for a Storm Island-ready car (before a Storm Island race it suggests the
+// Rally parts otherwise): Rally springs and dampers (level 4), Rally tyres (5), Rally
+// transmission (4). RaceStartParts sends those three levels at the start of each race.
+RULE(r_ready_to_bounce) { return Flag(f.ctr.get("island.rally.start") > 0); }
 RULE(r_island_champion) { return Flag(f.flag("CareerState", "WonFirstIslandFinal") || won_event(f, kIslandFinale)); }
 RULE(r_gauntlet1) {
     int n = 0;
@@ -270,7 +296,7 @@ const std::vector<Def> kDefs = {
     {"welcome_castelletto", "Welcome to Castelletto", "Arrive at Castelletto for the first time.", 25, G::Base, T::Save, nullptr, r_castelletto},
     {"welcome_montellino", "Welcome to Montellino", "Arrive at Montellino for the first time.", 25, G::Base, T::Save, nullptr, r_montellino},
     {"welcome_sangiovanni", "Welcome to San Giovanni", "Arrive at San Giovanni for the first time.", 25, G::Base, T::Save, nullptr, r_sangiovanni},
-    {"horizon_leader", "Horizon Leader", "Choose where the Road Trip goes for the first time.", 20, G::Base, T::Pending, nullptr, nullptr},
+    {"horizon_leader", "Horizon Leader", "Choose where the Road Trip goes for the first time.", 20, G::Base, T::Events, nullptr, r_horizon_leader},
     {"wanderlust", "Wanderlust", "Complete a Road Trip.", 10, G::Base, T::Save, "road trips", r_wanderlust},
     {"wristband_yellow", "Yellow Wristband", "Obtain the Yellow Wristband.", 10, G::Base, T::Save, nullptr, r_yellow},
     {"wristband_green", "Green Wristband", "Obtain the Green Wristband.", 10, G::Base, T::Save, "XP", r_green},
@@ -300,8 +326,8 @@ const std::vector<Def> kDefs = {
     {"rain_master", "Rain Master", "Complete your first race in the rain.", 10, G::Base, T::Save, nullptr, r_rain},
     {"train_in_vain", "The Train's in Vain", "Beat the train in a Horizon Showcase event.", 10, G::Base, T::Save, nullptr, r_train},
     {"multi_disciplined", "Multi-Disciplined", "Win an event in every type of car.", 10, G::Base, T::Save, "car types", r_car_types},
-    {"wild_drivatar", "A Wild Drivatar Appears!", "Win 3 Head-to-Head races against Drivatars with a bounty.", 10, G::Base, T::Pending, nullptr, nullptr},
-    {"we_meet_again", "We Meet Again!", "Win a Showdown at every Car Meet.", 20, G::Base, T::Pending, nullptr, nullptr},
+    {"wild_drivatar", "A Wild Drivatar Appears!", "Win 3 Head-to-Head races against Drivatars with a bounty.", 10, G::Base, T::Save, "wins", r_wild_drivatar},
+    {"we_meet_again", "We Meet Again!", "Win a Showdown at every Car Meet.", 20, G::Base, T::Online, nullptr, nullptr},
     {"friends_with_benefits", "Friends with Benefits", "Earn 1,000,000 Cr from Rivals.", 10, G::Base, T::Online, "Cr", r_rivals_credits},
     {"super_meet_boy", "Super Meet Boy", "Get a livery and a tuning setup, buy a car and enter a Showdown at a Car Meet.", 10, G::Base, T::Online, nullptr, nullptr},
     {"bragging_rights", "Bragging Rights", "Beat friends or club members on 20 Speed Cameras.", 10, G::Base, T::Online, nullptr, nullptr},
@@ -330,13 +356,13 @@ const std::vector<Def> kDefs = {
     {"tropical_treasure", "Tropical Treasure", "Find and restore the Barn Find on Storm Island.", 25, G::StormIsland, T::Save, nullptr, r_island_barn},
     {"skills_for_thrills", "Skills for Thrills", "Bank a 100,000-point skill chain on Storm Island.", 20, G::StormIsland, T::Events, "points", r_island_chain},
     {"storm_breaker", "Storm Breaker", "Win 5 events in stormy conditions.", 20, G::StormIsland, T::Save, "events", r_storm_wins},
-    {"ready_to_bounce", "Ready to Bounce", "Start a race on Storm Island with off-road tyres, suspension and transmission.", 10, G::StormIsland, T::Pending, nullptr, nullptr},
+    {"ready_to_bounce", "Ready to Bounce", "Start a race on Storm Island with off-road tyres, suspension and transmission.", 10, G::StormIsland, T::Events, nullptr, r_ready_to_bounce},
     {"fiesta_fun", "Fiesta Fun", "Win an event in the 1981 Ford Fiesta.", 10, G::StormIsland, T::Events, nullptr, r_fiesta},
     {"galant_great", "Galant Great", "Win an event in the Mitsubishi Galant VR-4.", 10, G::StormIsland, T::Events, nullptr, r_galant},
     {"metro_master", "Metro Master", "Win an event in the MG Metro 6R4.", 10, G::StormIsland, T::Events, nullptr, r_metro},
     {"ranger_rock_star", "Ranger Rock Star", "Win an event in the Ford Ranger T6.", 10, G::StormIsland, T::Events, nullptr, r_ranger},
     {"stadium_star", "Stadium Star", "Win an event in the Robby Gordon #7 SST.", 10, G::StormIsland, T::Events, nullptr, r_sst},
-    {"meet_and_beat", "Meet and Beat", "Visit the Storm Island Car Meet and win 3 Showdowns.", 20, G::StormIsland, T::Pending, nullptr, nullptr},
+    {"meet_and_beat", "Meet and Beat", "Visit the Storm Island Car Meet and win 3 Showdowns.", 20, G::StormIsland, T::Online, nullptr, nullptr},
     {"horizon_5_0", "Horizon 5-0", "Complete 50 online events on Storm Island.", 30, G::StormIsland, T::Online, nullptr, nullptr},
 
     // ---- Porsche Expansion: 15, 500G ----
@@ -352,7 +378,7 @@ const std::vector<Def> kDefs = {
     {"this_is_my_porsche", "This Is My Porsche", "Complete 10 events in the same Porsche.", 50, G::Porsche, T::Events, "events", r_same_porsche},
     {"animal", "Animal!", "Pull off 20 Drift skills in the 2015 Porsche Cayman GTS.", 20, G::Porsche, T::Events, "drifts", r_cayman_drifts},
     {"call_911", "Call 911", "Pull off 30 Near Miss skills in the Porsche 911 Turbo S.", 20, G::Porsche, T::Events, "near misses", r_turbo_s_near_miss},
-    {"cup_car", "Cup Car", "Earn 25,000 Cr in Rivals with the Porsche 911 GT3 RS 4.0.", 20, G::Porsche, T::Pending, nullptr, nullptr},
+    {"cup_car", "Cup Car", "Earn 25,000 Cr in Rivals with the Porsche 911 GT3 RS 4.0.", 20, G::Porsche, T::Online, "Cr", r_cup_car},
     {"no_airbag", "No Airbag Required", "Earn 20 Clean Racing skills in the 1989 Porsche 944 Turbo.", 20, G::Porsche, T::Events, "skills", r_944_clean},
     {"widow_maker", "Widow Maker", "Win a race in the wet in the 1982 Porsche 911 Turbo 3.3.", 20, G::Porsche, T::Events, nullptr, r_widow_maker},
 };
@@ -392,6 +418,22 @@ bool count_event(const Event& e, const GameData& gd, Counters& c, LiveFacts& liv
         case ev::IslandRoadsDriven:       // [3] roads found, [4] all found, [5] percent
             if (!e.i(4)) return false;
             c.raise("island.roads.all", 1);
+            return true;
+        case ev::RaceEncounterEnd:        // [3] difficulty, [5] 1 won / 2 lost, [6] rareSpawn (the bounty)
+            if (e.i(5) != 1) return false;
+            c.add("h2h.won", 1);
+            if (e.i(6) != 0) c.add("h2h.bounty.won", 1);
+            return true;
+        case ev::RaceStartParts:          // [3] track, [4] springs and dampers, [5] tyres, [6] transmission levels
+            if (e.world() != kWorldIsland || e.i(4) != 4 || e.i(5) != 5 || e.i(6) != 4) return false;
+            c.raise("island.rally.start", 1);
+            return true;
+        case ev::RoadTripCreated:         // a destination picked on the Road Trip screen
+            c.raise("roadtrip.chosen", 1);
+            return true;
+        case ev::RivalsEnd:               // [3] event, [4] track, [7] car, [10] credits won, [11] place
+            if (e.i(7) != 2297 || e.i(10) <= 0) return false;
+            c.add("rivals.cr.2297", e.i(10));
             return true;
         case ev::AnthemRaceEnd: {
             // [8] car, [9] exit status (0 = finished), [10] time, [11] place (1 = won), [12] event,

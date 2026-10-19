@@ -169,13 +169,17 @@ bool wanted(uint16_t id) {
         case ev::SkillChainCompleted:
         case ev::IslandSkillChainCompleted:
         case ev::IslandRoadsDriven:
+        case ev::RaceEncounterEnd:
+        case ev::RaceStartParts:
+        case ev::RivalsEnd:
+        case ev::RoadTripCreated:
             return true;
         default:
             return false;
     }
 }
-// Events whose fields aren't understood yet but would let more achievements be tracked: logged
-// (the first 25 of each) for working them out.
+// Events logged (the first 25 of each): ones whose fields aren't understood yet but would let more
+// achievements be tracked, and the newest counted ones, to check them against play.
 bool research(uint16_t id) {
     switch (id) {
         case 7:    // AnthemRaceStart
@@ -186,6 +190,8 @@ bool research(uint16_t id) {
         case 34: case 41: case 49:            // DroveToDestination, champions
         case ev::RaceEncounterEnd:
         case ev::RaceStartParts:
+        case ev::RivalsEnd:
+        case ev::RoadTripCreated:
         case ev::WristbandGained:
         case 108:  // RoadsDriven
         case 113:  // ShowcaseRaceEnd
@@ -221,7 +227,7 @@ Event decode(const uint8_t* desc, uint32_t n, const EDD* data) {
             int32_t i;
             std::memcpy(&i, p, 4);
             f.i = i;
-            if (f.type == 0x0B || f.type == 0x09) {
+            if (f.type == 0x09) {   // a float; 0x0B is a 4-byte bool (RaceEncounterEnd's rareSpawn)
                 float x;
                 std::memcpy(&x, p, 4);
                 f.d = x;
@@ -250,7 +256,7 @@ std::string describe(const Event& e) {
     for (size_t k = 3; k < e.f.size(); ++k) {
         const EvField& f = e.f[k];
         if (!f.s.empty() || f.type == 0x00) std::snprintf(b, sizeof b, " [%zu] \"%.40s\"", k, f.s.c_str());
-        else if (f.type == 0x0B || f.type == 0x09) std::snprintf(b, sizeof b, " [%zu] %g", k, f.d);
+        else if (f.type == 0x09) std::snprintf(b, sizeof b, " [%zu] %g", k, f.d);
         else std::snprintf(b, sizeof b, " [%zu] %lld", k, static_cast<long long>(f.i));
         s += b;
     }
@@ -270,12 +276,11 @@ uint32_t etx_detour(const uint8_t* desc, const void* prov, uint64_t handle, uint
             break;
     }
     const int seen = ++g_evCount[id & 0xFF];
+    if (research(id) && seen <= 25) logf("event %s", describe(decode(desc, n, data)).c_str());
     if (wanted(id)) {
         Event e = decode(desc, n, data);
         std::lock_guard<std::mutex> lk(g_evMu);
         if (g_events.size() < 10000) g_events.push_back(std::move(e));
-    } else if (research(id) && seen <= 25) {
-        logf("event %s", describe(decode(desc, n, data)).c_str());
     }
     return o_etx(desc, prov, handle, n, data);
 }

@@ -144,8 +144,8 @@ struct Event {
 namespace ev {
 constexpr uint16_t AnthemRaceEnd = 6, CarPurchased = 19, DistanceDrivenDelta = 33, IslandRewardBoardSmashed = 54,
                    IslandRoadsDriven = 55, IslandSkillChainCompleted = 57, RaceEncounterEnd = 97, RaceStartParts = 101,
-                   RewardBoardSmashed = 103, SkillAchieved = 115, SkillChainCompleted = 116, WristbandGained = 129,
-                   XPGained = 131;
+                   RewardBoardSmashed = 103, RivalsEnd = 104, RoadTripCreated = 109, SkillAchieved = 115,
+                   SkillChainCompleted = 116, WristbandGained = 129, XPGained = 131;
 }
 constexpr int64_t kWorldIsland = 549;
 
