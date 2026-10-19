@@ -176,8 +176,9 @@ std::vector<std::string> section_titles();
 // "" if every achievement is in exactly one section, otherwise what's wrong.
 std::string section_check();
 // The page's slots (FH2Mod_Slot_<n> in its XAML).
-constexpr int kSlotSection = 0;   // the section selected on the left
-constexpr int kSlotPane    = 1;   // where the focus is: 0 the sections, 1 the selected one's achievements
+constexpr int kSlotSelected = 0;   // the section list's SelectedIndex: -1 while the focus is elsewhere
+constexpr int kSlotPane     = 1;   // where the focus is: 0 the sections, 1 the shown one's achievements
+constexpr int kSlotSection  = 2;   // the section shown: the last one selected
 
 // ---- SQLite (Windows' own winsqlite3.dll) ----------------------------------------------------
 

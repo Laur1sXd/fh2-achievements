@@ -432,12 +432,18 @@ void push_page(const Facts* f, const Store& s) {
     if (!g_api->set_page_xaml(g_mod, "List", x.resources.c_str(), x.content.c_str(), x.help.c_str())) logf("the page's XAML was refused");
 }
 
+// The section list's selection: the section to show. (It goes to -1 when the focus moves to the
+// cards: the shown section stays.)
+void on_page_slot(void*, const char* key, int slot, int value) {
+    if (slot == kSlotSelected && value >= 0) g_api->set_page_slot(g_mod, key, kSlotSection, value);
+}
+
 // A on a section: into its achievements. B there: back to the section. B on the sections leaves.
 // The pane changes first, so the sections stop (or start) taking the focus before it moves.
 int on_page_button(void*, const char* key, int button) {
     const int pane = g_api->get_page_slot(g_mod, key, kSlotPane), sec = g_api->get_page_slot(g_mod, key, kSlotSection);
     if (button == FH2_BUTTON_A) {
-        if (pane != 0 || sec < 0) return FH2_PAGE_HANDLED;
+        if (pane != 0) return FH2_PAGE_HANDLED;
         g_api->set_page_slot(g_mod, key, kSlotPane, 1);
         if (!g_api->focus_page_element(g_mod, key, ("Ach_Card_" + std::to_string(sec) + "_0").c_str())) {
             g_api->set_page_slot(g_mod, key, kSlotPane, 0);
@@ -447,7 +453,7 @@ int on_page_button(void*, const char* key, int button) {
     }
     if (button == FH2_BUTTON_B && pane == 1) {
         g_api->set_page_slot(g_mod, key, kSlotPane, 0);
-        g_api->focus_page_element(g_mod, key, sec <= 0 ? "FirstItem" : ("Ach_Sec_" + std::to_string(sec)).c_str());
+        g_api->focus_page_element(g_mod, key, sec == 0 ? "FirstItem" : ("Ach_Sec_" + std::to_string(sec)).c_str());
         return FH2_PAGE_HANDLED_BACK;
     }
     return FH2_PAGE_IGNORED;
@@ -716,6 +722,7 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
         p.description = "Every achievement, unlocked or not, with your progress towards the locked ones.";
         p.tile        = "Achievements";
         p.on_button   = &on_page_button;
+        p.on_slot     = &on_page_slot;
         g_pageOn      = api->add_page(g_mod, &p) != 0;
         if (g_pageOn) {
             Store none;
