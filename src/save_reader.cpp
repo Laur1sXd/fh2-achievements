@@ -420,6 +420,15 @@ bool read_game_data(const std::wstring& gameDir, GameData& out, std::string& why
       [&](const SqlRow& r) { out.bucketList[static_cast<int>(r[0])] = static_cast<int>(r[1]); });
     q("SELECT Id FROM Data_Car WHERE MediaName LIKE 'POR!_%' ESCAPE '!'",
       [&](const SqlRow& r) { out.porsches.insert(static_cast<int>(r[0])); });
+    // the weather each event's race is run in (WeatherPreset 7, 8: StormB; 11-13: StormTropical)
+    q("SELECT AnthemEventId, max(WeatherPrecipitationLevel > 0), max(WeatherPrecipitationLevel > 0 OR WeatherEnvironmentWetness > 0), "
+      "max(WeatherPreset IN (7, 8, 11, 12, 13)) FROM AnthemEventRaces WHERE CustomWeather = 1 GROUP BY AnthemEventId",
+      [&](const SqlRow& r) {
+          const int ev = static_cast<int>(r[0]);
+          if (r[1]) out.rainEvents.insert(ev);
+          if (r[2]) out.wetEvents.insert(ev);
+          if (r[3]) out.stormEvents.insert(ev);
+      });
     sql_close(db);
     if (!err.empty()) {
         why = "game database: " + err;

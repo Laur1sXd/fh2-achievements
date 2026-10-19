@@ -34,6 +34,11 @@ struct GameData {
     std::set<int> gauntletCampaigns;       // Storm Island's Gauntlet (IronMan) championships
     std::map<int, int> bucketList;         // bucket list challenge -> list
     std::set<int> porsches;                // car ids made by Porsche
+    // Each championship, showcase and road trip race has its weather set (AnthemEventRaces:
+    // CustomWeather, WeatherPreset, WeatherPrecipitationLevel, WeatherEnvironmentWetness).
+    std::set<int> rainEvents;              // it rains (precipitation above 0)
+    std::set<int> wetEvents;               // it rains, or the roads are wet
+    std::set<int> stormEvents;             // a storm (presets StormB*, StormTropical*)
 };
 
 // From the newest finished save revision.

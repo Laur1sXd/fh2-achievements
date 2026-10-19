@@ -19,6 +19,10 @@
 //  - Skills: "Clean Racing" is the FastAndClean skill (RaceFeats strings IDS_FastAndClean1-4).
 //  - Storm Island has 50 roads: its IslandRoadsDriven event (sent with the roads found and the
 //    total, 0x1409C1010) reported "all found" at 50.
+//  - Weather: every championship, showcase and road trip race has its weather set in
+//    AnthemEventRaces. 86 of the mainland's 672 championship races are in the rain, 35 of Storm
+//    Island's 89; the storms are presets StormB (mainland) and StormTropical (Storm Island). The
+//    save's Career_EventResults says which events were finished and the best place.
 #include "ach.hpp"
 
 #include <algorithm>
@@ -157,6 +161,20 @@ RULE(r_bucket_all) {
     return P(b.solo, b.total ? b.total : 45);
 }
 RULE(r_train) { return Flag(won_event(f, kTrainInVain)); }
+// Weather, from the races' set weather: any finished in the rain (the save's results, or since
+// the mod was installed); events won in a storm.
+RULE(r_rain) {
+    for (const auto& [event, place] : f.save.eventPlace)
+        if (f.gd.rainEvents.count(event)) return Flag(true);
+    return Flag(f.ctr.get("rain.done") > 0);
+}
+RULE(r_storm_wins) {
+    int n = 0;
+    for (int event : f.gd.stormEvents) n += won_event(f, event);
+    return P(n, 5);
+}
+RULE(r_widow_maker) { return Flag(f.ctr.get("win.wet.265") > 0); }
+
 RULE(r_car_types) {
     return P(car_types_won(f), f.gd.mainlandBuckets.empty() ? 28 : f.gd.mainlandBuckets.size());
 }
@@ -279,7 +297,7 @@ const std::vector<Def> kDefs = {
     {"one_down", "One Down!", "Complete a Solo Bucket List challenge.", 10, G::Base, T::Save, "challenges", r_bucket1},
     {"kick_the_bucket", "Kick the Bucket", "Scratch 15 items off your Solo Bucket List.", 10, G::Base, T::Save, "challenges", r_bucket15},
     {"rest_in_peace", "Rest in Peace", "Complete every Solo Bucket List challenge.", 20, G::Base, T::Save, "challenges", r_bucket_all},
-    {"rain_master", "Rain Master", "Complete your first race in the rain.", 10, G::Base, T::Pending, nullptr, nullptr},
+    {"rain_master", "Rain Master", "Complete your first race in the rain.", 10, G::Base, T::Save, nullptr, r_rain},
     {"train_in_vain", "The Train's in Vain", "Beat the train in a Horizon Showcase event.", 10, G::Base, T::Save, nullptr, r_train},
     {"multi_disciplined", "Multi-Disciplined", "Win an event in every type of car.", 10, G::Base, T::Save, "car types", r_car_types},
     {"wild_drivatar", "A Wild Drivatar Appears!", "Win 3 Head-to-Head races against Drivatars with a bounty.", 10, G::Base, T::Pending, nullptr, nullptr},
@@ -311,7 +329,7 @@ const std::vector<Def> kDefs = {
     {"castaways", "Castaways", "Complete every co-op Storm Island Bucket List challenge.", 30, G::StormIsland, T::Online, "challenges", r_island_coop_all},
     {"tropical_treasure", "Tropical Treasure", "Find and restore the Barn Find on Storm Island.", 25, G::StormIsland, T::Save, nullptr, r_island_barn},
     {"skills_for_thrills", "Skills for Thrills", "Bank a 100,000-point skill chain on Storm Island.", 20, G::StormIsland, T::Events, "points", r_island_chain},
-    {"storm_breaker", "Storm Breaker", "Win 5 events in stormy conditions.", 20, G::StormIsland, T::Pending, nullptr, nullptr},
+    {"storm_breaker", "Storm Breaker", "Win 5 events in stormy conditions.", 20, G::StormIsland, T::Save, "events", r_storm_wins},
     {"ready_to_bounce", "Ready to Bounce", "Start a race on Storm Island with off-road tyres, suspension and transmission.", 10, G::StormIsland, T::Pending, nullptr, nullptr},
     {"fiesta_fun", "Fiesta Fun", "Win an event in the 1981 Ford Fiesta.", 10, G::StormIsland, T::Events, nullptr, r_fiesta},
     {"galant_great", "Galant Great", "Win an event in the Mitsubishi Galant VR-4.", 10, G::StormIsland, T::Events, nullptr, r_galant},
@@ -336,7 +354,7 @@ const std::vector<Def> kDefs = {
     {"call_911", "Call 911", "Pull off 30 Near Miss skills in the Porsche 911 Turbo S.", 20, G::Porsche, T::Events, "near misses", r_turbo_s_near_miss},
     {"cup_car", "Cup Car", "Earn 25,000 Cr in Rivals with the Porsche 911 GT3 RS 4.0.", 20, G::Porsche, T::Pending, nullptr, nullptr},
     {"no_airbag", "No Airbag Required", "Earn 20 Clean Racing skills in the 1989 Porsche 944 Turbo.", 20, G::Porsche, T::Events, "skills", r_944_clean},
-    {"widow_maker", "Widow Maker", "Win a race in the wet in the 1982 Porsche 911 Turbo 3.3.", 20, G::Porsche, T::Pending, nullptr, nullptr},
+    {"widow_maker", "Widow Maker", "Win a race in the wet in the 1982 Porsche 911 Turbo 3.3.", 20, G::Porsche, T::Events, nullptr, r_widow_maker},
 };
 
 }  // namespace
@@ -384,7 +402,9 @@ bool count_event(const Event& e, const GameData& gd, Counters& c, LiveFacts& liv
             if (place == 1) {
                 c.raise("won." + std::to_string(event), 1);
                 c.add("win.car." + cs, 1);
+                if (gd.wetEvents.count(static_cast<int>(event))) c.add("win.wet." + cs, 1);
             }
+            if (gd.rainEvents.count(static_cast<int>(event))) c.raise("rain.done", 1);
             if (gd.porsches.count(static_cast<int>(car))) {
                 c.add("done.car." + cs, 1);
                 c.add("done.porsche", 1);
