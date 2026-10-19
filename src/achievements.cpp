@@ -431,10 +431,27 @@ bool save_store(const std::wstring& path, const Store& s) {
 
 bool g_pageOn = false;   // the platform has pages, and ours was added
 
+std::string g_tileText;   // as last set
 void push_page(const Facts* f, const Store& s) {
     if (!g_pageOn) return;
     const PageXaml x = page_xaml(f, s.unlocked);
     if (!g_api->set_page_xaml(g_mod, "List", x.resources.c_str(), x.content.c_str(), x.help.c_str())) logf("the page's XAML was refused");
+    // the Gamerscore on the pause menu's Achievements tile: "340 / 2,000G"
+    int got = 0, all = 0;
+    for (const Def& d : defs()) {
+        all += d.gamerscore;
+        if (s.unlocked.count(d.id)) got += d.gamerscore;
+    }
+    auto thousands = [](int v) {
+        std::string t = std::to_string(v);
+        for (int i = static_cast<int>(t.size()) - 3; i > 0; i -= 3) t.insert(static_cast<size_t>(i), ",");
+        return t;
+    };
+    const std::string text = thousands(got) + " / " + thousands(all) + "G";
+    if (text != g_tileText) {
+        if (g_api->set_page_tile_text(g_mod, "List", text.c_str())) g_tileText = text;
+        else logf("the tile's text was refused");
+    }
 }
 
 // The section list's selection: the section to show. (It goes to -1 when the focus moves to the
