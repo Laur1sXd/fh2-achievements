@@ -1,0 +1,665 @@
+// Achievements: the mod. Hooks, the pop-ups, the unlock file and the worker thread that ties them
+// together; the rules are in rules.cpp, the save in save_reader.cpp. See ach.hpp for the idea.
+//
+// Game addresses are for the 24 Nov 2015 build Azimuth runs; the platform checks each hooked
+// byte against the exe on disk, and the two functions called directly are checked here.
+//  - Telemetry events: EtwPlus.dll's EtxEventWrite through its import slot, game+0x1DD0060
+//    (event descriptor in rcx: id at +0, name at +0x10, field types at +0x20, field count in the
+//    low byte of +0x28; the EVENT_DATA_DESCRIPTORs are the 5th argument).
+//  - Profile stats: SetStat (0x1402F7940) at 0x1402F7977, just after its "stats enabled" check:
+//    rsi = the stat's name ("Main/XP"), rbp = its new value (type at +0x10: 3 int32, 9 float;
+//    value at +8).
+//  - HUD notifications: HUDMinorNotificationComponent's constructor (0x14073E0B1, rbx = it) and
+//    destructor (0x14073F046, rbx = it) keep a list of them; TemplateName is the std::string at
+//    +0x128+0x18. Show (0x140755330) takes the component and three display strings by value
+//    (main text, subtext, icon name; it releases them itself), made with 0x140323310
+//    (out, const char* text, -1). The icon "Achievement" is the HUD's own trophy.
+//  - A tick on the game thread to show them from: AchievementsModule's update (vtable +0x20,
+//    0x1403FCD60, about 60 a second), hooked at 0x1403FCD84.
+#include "ach.hpp"
+#include "fh2mod.h"
+
+#include <windows.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <deque>
+#include <fstream>
+#include <mutex>
+#include <sstream>
+
+using namespace ach;
+
+namespace {
+
+const FH2ModApi* g_api;
+FH2Mod* g_mod;
+uint8_t* g_base;
+std::wstring g_azimuth, g_gameDir, g_dir, g_iniPath;
+
+namespace rva {
+constexpr uintptr_t EtxEventWriteSlot = 0x1DD0060;
+constexpr uintptr_t SetStatHook = 0x2F7977;
+constexpr uintptr_t NotifCtor = 0x73E0B1, NotifDtor = 0x73F046;
+constexpr uintptr_t AchModUpdate = 0x3FCD84;
+constexpr uintptr_t MakeDisplayString = 0x323310, ShowNotif = 0x755330;
+}  // namespace rva
+
+const uint8_t kMakeDisplayStringBytes[] = {0x40, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x48, 0xC7, 0x44, 0x24, 0x28, 0xFE, 0xFF, 0xFF, 0xFF};
+const uint8_t kShowNotifBytes[] = {0x4C, 0x89, 0x4C, 0x24, 0x20, 0x4C, 0x89, 0x44, 0x24, 0x18, 0x48, 0x89, 0x54, 0x24, 0x10};
+
+// ---- log: fh2-mods\Achievements\Achievements.log ---------------------------------------------
+
+std::mutex g_logMu;
+std::string g_logBuf;
+std::wstring g_logPath;
+ULONGLONG g_t0;
+std::atomic<size_t> g_logBytes{0};
+
+void logf(const char* fmt, ...) {
+    if (g_logBytes.load(std::memory_order_relaxed) > (8u << 20)) return;
+    char b[2048];
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    int n = std::snprintf(b, sizeof b, "%02d:%02d:%02d ", st.wHour, st.wMinute, st.wSecond);
+    va_list ap;
+    va_start(ap, fmt);
+    int m = vsnprintf(b + n, sizeof b - n - 2, fmt, ap);
+    va_end(ap);
+    size_t len = std::min<size_t>(n + std::max(m, 0), sizeof b - 2);
+    b[len++] = '\n';
+    g_logBytes += len;
+    std::lock_guard<std::mutex> lk(g_logMu);
+    g_logBuf.append(b, len);
+}
+
+void flush_log() {
+    std::string s;
+    {
+        std::lock_guard<std::mutex> lk(g_logMu);
+        s.swap(g_logBuf);
+    }
+    if (s.empty() || g_logPath.empty()) return;
+    HANDLE h = CreateFileW(g_logPath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    DWORD w = 0;
+    WriteFile(h, s.data(), static_cast<DWORD>(s.size()), &w, nullptr);
+    CloseHandle(h);
+}
+
+void plog(const std::string& s) { g_api->log(g_mod, s.c_str()); }
+
+std::string narrow(const std::wstring& w) {
+    std::string s;
+    for (wchar_t c : w) s.push_back(c < 128 ? static_cast<char>(c) : '?');
+    return s;
+}
+
+bool sread(const void* p, void* out, size_t n) {
+    if (reinterpret_cast<uintptr_t>(p) < 0x10000) return false;
+    SIZE_T got = 0;
+    return ReadProcessMemory(GetCurrentProcess(), p, out, n, &got) && got == n;
+}
+template <class T> T srd(const void* p, T def = T{}) {
+    T v;
+    return sread(p, &v, sizeof v) ? v : def;
+}
+// MSVC 2012 std::string: buffer or pointer at +0, size at +0x10, capacity at +0x18.
+std::string msvc_str(const void* s) {
+    auto b = static_cast<const uint8_t*>(s);
+    const uint64_t size = srd<uint64_t>(b + 0x10, ~0ull), cap = srd<uint64_t>(b + 0x18, 0);
+    if (size > 512 || cap < size) return {};
+    const char* p = cap >= 16 ? srd<const char*>(b) : reinterpret_cast<const char*>(b);
+    std::string r(size, '\0');
+    if (size && !sread(p, r.data(), size)) return {};
+    return r;
+}
+
+bool code_matches(uintptr_t rva, const uint8_t* bytes, size_t n) {
+    uint8_t have[32];
+    return n <= sizeof have && sread(g_base + rva, have, n) && std::memcmp(have, bytes, n) == 0;
+}
+
+std::string now_utc() {
+    SYSTEMTIME st;
+    GetSystemTime(&st);
+    char b[32];
+    std::snprintf(b, sizeof b, "%04d-%02d-%02d %02d:%02d:%02d UTC", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    return b;
+}
+
+// ---- settings: fh2-mods\Achievements.ini -----------------------------------------------------
+
+std::atomic<bool> g_popupsOn{true};
+
+void on_setting(void*, const char* key, int value) {
+    if (std::strcmp(key, "Popups") == 0) {
+        g_popupsOn = value != 0;
+        WritePrivateProfileStringW(L"Achievements", L"Popups", value ? L"1" : L"0", g_iniPath.c_str());
+    }
+}
+
+// ---- events: hooked import, decoded off the game's back --------------------------------------
+
+struct EDD {   // EVENT_DATA_DESCRIPTOR
+    uint64_t ptr;
+    uint32_t size;
+    uint32_t reserved;
+};
+using EtxWriteFn = uint32_t (*)(const uint8_t*, const void*, uint64_t, uint32_t, const EDD*);
+EtxWriteFn o_etx;
+
+std::mutex g_evMu;
+std::deque<Event> g_events;
+std::atomic<bool> g_ready{false};   // the player is in the game world (pop-ups can show)
+std::atomic<int> g_evCount[256];
+
+bool wanted(uint16_t id) {
+    switch (id) {
+        case ev::AnthemRaceEnd:
+        case ev::CarPurchased:
+        case ev::RewardBoardSmashed:
+        case ev::IslandRewardBoardSmashed:
+        case ev::SkillAchieved:
+        case ev::SkillChainCompleted:
+        case ev::IslandSkillChainCompleted:
+            return true;
+        default:
+            return false;
+    }
+}
+// Events whose fields aren't understood yet but would let more achievements be tracked: logged
+// (the first 25 of each) for working them out.
+bool research(uint16_t id) {
+    switch (id) {
+        case 7:    // AnthemRaceStart
+        case 11: case 12: case 45: case 46:   // barn finds
+        case 14: case 47:                     // bucket list challenge ends
+        case 17: case 18:                     // car meets
+        case 20: case 21: case 50: case 51:   // championships
+        case 34: case 41: case 49: case 55:   // DroveToDestination, champions, IslandRoadsDriven
+        case ev::RaceEncounterEnd:
+        case ev::RaceStartParts:
+        case ev::WristbandGained:
+        case 108:  // RoadsDriven
+        case 113:  // ShowcaseRaceEnd
+            return true;
+        default:
+            return false;
+    }
+}
+
+Event decode(const uint8_t* desc, uint32_t n, const EDD* data) {
+    Event e;
+    e.id = static_cast<uint16_t>(*reinterpret_cast<const uint32_t*>(desc));
+    const char* name = *reinterpret_cast<const char* const*>(desc + 0x10);
+    if (name) e.name.assign(name, strnlen(name, 64));
+    const uint8_t* types = *reinterpret_cast<const uint8_t* const*>(desc + 0x20);
+    const uint32_t nf = *reinterpret_cast<const uint32_t*>(desc + 0x28) & 0xFF;
+    n = std::min<uint32_t>(n, 40);
+    e.f.resize(n);
+    for (uint32_t k = 0; k < n; ++k) {
+        EvField& f = e.f[k];
+        f.type = (types && k < nf) ? types[k] : 0xFF;
+        f.size = data[k].size;
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(data[k].ptr);
+        if (!p) continue;
+        if (k >= 3 && f.type == 0x00 && f.size % 2 == 0) {
+            for (uint32_t c = 0; c < f.size / 2 && c < 128; ++c) {
+                wchar_t w;
+                std::memcpy(&w, p + 2 * c, 2);
+                if (!w) break;
+                f.s.push_back(w < 128 ? static_cast<char>(w) : '?');
+            }
+        } else if (f.size == 4) {
+            int32_t i;
+            std::memcpy(&i, p, 4);
+            f.i = i;
+            if (f.type == 0x0B || f.type == 0x09) {
+                float x;
+                std::memcpy(&x, p, 4);
+                f.d = x;
+            } else {
+                f.d = i;
+            }
+        } else if (f.size == 8) {
+            std::memcpy(&f.i, p, 8);
+            f.d = static_cast<double>(f.i);
+        } else if (f.size == 2) {
+            uint16_t v;
+            std::memcpy(&v, p, 2);
+            f.i = v;
+            f.d = v;
+        } else if (f.size == 1) {
+            f.i = *p;
+            f.d = *p;
+        }
+    }
+    return e;
+}
+
+std::string describe(const Event& e) {
+    std::string s = e.name + " (" + std::to_string(e.id) + "):";
+    char b[64];
+    for (size_t k = 3; k < e.f.size(); ++k) {
+        const EvField& f = e.f[k];
+        if (!f.s.empty() || f.type == 0x00) std::snprintf(b, sizeof b, " [%zu] \"%.40s\"", k, f.s.c_str());
+        else if (f.type == 0x0B || f.type == 0x09) std::snprintf(b, sizeof b, " [%zu] %g", k, f.d);
+        else std::snprintf(b, sizeof b, " [%zu] %lld", k, static_cast<long long>(f.i));
+        s += b;
+    }
+    return s;
+}
+
+uint32_t etx_detour(const uint8_t* desc, const void* prov, uint64_t handle, uint32_t n, const EDD* data) {
+    const uint16_t id = static_cast<uint16_t>(*reinterpret_cast<const uint32_t*>(desc));
+    switch (id) {
+        case ev::XPGained:
+        case ev::DistanceDrivenDelta:
+        case ev::SkillChainCompleted:
+        case ev::SkillAchieved:
+        case ev::RewardBoardSmashed:
+        case 7:   // AnthemRaceStart
+            g_ready = true;
+            break;
+    }
+    const int seen = ++g_evCount[id & 0xFF];
+    if (wanted(id)) {
+        Event e = decode(desc, n, data);
+        std::lock_guard<std::mutex> lk(g_evMu);
+        if (g_events.size() < 10000) g_events.push_back(std::move(e));
+    } else if (research(id) && seen <= 25) {
+        logf("event %s", describe(decode(desc, n, data)).c_str());
+    }
+    return o_etx(desc, prov, handle, n, data);
+}
+
+// ---- live stats: SetStat ----------------------------------------------------------------------
+
+std::mutex g_statMu;
+std::map<std::string, double> g_liveStats;
+std::atomic<uint32_t> g_statVersion{0};
+
+void on_set_stat(FH2Context* c, void*) {
+    const char* name = reinterpret_cast<const char*>(c->rsi);
+    const uint8_t* v = reinterpret_cast<const uint8_t*>(c->rbp);
+    if (!name || !v) return;
+    const int32_t type = *reinterpret_cast<const int32_t*>(v + 0x10);
+    double value;
+    if (type == 3) value = *reinterpret_cast<const int32_t*>(v + 8);
+    else if (type == 9) value = *reinterpret_cast<const float*>(v + 8);
+    else return;
+    const std::string key(name, strnlen(name, 96));
+    std::lock_guard<std::mutex> lk(g_statMu);
+    auto [it, added] = g_liveStats.try_emplace(key, value);
+    if (added || it->second != value) {
+        it->second = value;
+        ++g_statVersion;
+    }
+}
+
+// ---- HUD notifications ------------------------------------------------------------------------
+
+std::mutex g_compMu;
+std::vector<uint8_t*> g_comps;   // live HUDMinorNotificationComponents, oldest first
+std::atomic<ULONGLONG> g_firstCompTick{0};
+
+void on_notif_ctor(FH2Context* c, void*) {
+    std::lock_guard<std::mutex> lk(g_compMu);
+    g_comps.push_back(reinterpret_cast<uint8_t*>(c->rbx));
+    if (!g_firstCompTick) g_firstCompTick = GetTickCount64();
+}
+void on_notif_dtor(FH2Context* c, void*) {
+    std::lock_guard<std::mutex> lk(g_compMu);
+    auto it = std::find(g_comps.begin(), g_comps.end(), reinterpret_cast<uint8_t*>(c->rbx));
+    if (it != g_comps.end()) g_comps.erase(it);
+}
+
+// The HUD's "road discovered" notification (its template draws an icon and two lines; the
+// first one made, which lives as long as the HUD), else the oldest.
+uint8_t* pick_component() {
+    std::lock_guard<std::mutex> lk(g_compMu);
+    for (uint8_t* c : g_comps)
+        if (msvc_str(c + 0x128 + 0x18) == "RoadDiscovery") return c;
+    return g_comps.empty() ? nullptr : g_comps.front();
+}
+
+struct Popup {
+    std::string main, sub;
+};
+std::mutex g_popMu;
+std::deque<Popup> g_popups;
+ULONGLONG g_nextPopup = 0;   // game thread only
+bool g_callsChecked = false, g_callsOk = false;
+
+void queue_popup(const std::string& main, const std::string& sub) {
+    logf("pop-up queued: %s / %s", main.c_str(), sub.c_str());
+    std::lock_guard<std::mutex> lk(g_popMu);
+    g_popups.push_back({main, sub});
+}
+
+// Runs on the game thread about 60 times a second.
+void on_tick(FH2Context*, void*) {
+    if (!g_popupsOn || !g_ready) return;
+    const ULONGLONG now = GetTickCount64();
+    if (now < g_nextPopup) return;
+    Popup p;
+    {
+        std::lock_guard<std::mutex> lk(g_popMu);
+        if (g_popups.empty()) return;
+        p = g_popups.front();
+    }
+    if (!g_callsChecked) {
+        g_callsChecked = true;
+        g_callsOk = code_matches(rva::MakeDisplayString, kMakeDisplayStringBytes, sizeof kMakeDisplayStringBytes) &&
+                    code_matches(rva::ShowNotif, kShowNotifBytes, sizeof kShowNotifBytes);
+        if (!g_callsOk) logf("the game's notification code isn't what this mod expects: no pop-ups");
+    }
+    if (!g_callsOk) return;
+    uint8_t* comp = pick_component();
+    if (!comp) return;
+    {
+        std::lock_guard<std::mutex> lk(g_popMu);
+        if (!g_popups.empty()) g_popups.pop_front();
+    }
+    auto make = reinterpret_cast<void** (*)(void**, const char*, int)>(g_base + rva::MakeDisplayString);
+    auto show = reinterpret_cast<void (*)(void*, void**, void**, void**)>(g_base + rva::ShowNotif);
+    void *a = nullptr, *b = nullptr, *icon = nullptr;
+    make(&a, p.main.c_str(), -1);
+    make(&b, p.sub.c_str(), -1);
+    make(&icon, "Achievement", -1);
+    show(comp, &a, &b, &icon);   // takes all three by value: it releases them itself
+    g_nextPopup = now + 5500;
+    logf("pop-up shown: %s / %s", p.main.c_str(), p.sub.c_str());
+}
+
+// ---- the unlock file: fh2-mods\Achievements\<user>.ini -----------------------------------------
+
+struct Store {
+    std::map<std::string, std::string> unlocked;   // id -> when
+    Counters ctr;
+    bool existed = false;
+};
+
+void load_store(const std::wstring& path, Store& s) {
+    std::ifstream in(path.c_str());
+    s.existed = in.good();
+    std::string line, section;
+    while (std::getline(in, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.empty() || line[0] == ';') continue;
+        if (line[0] == '[') {
+            section = line;
+            continue;
+        }
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+        if (section == "[unlocked]") s.unlocked[k] = v;
+        else if (section == "[counters]") s.ctr.v[k] = std::strtoll(v.c_str(), nullptr, 10);
+    }
+}
+
+bool save_store(const std::wstring& path, const Store& s) {
+    std::ostringstream o;
+    o << "; Achievements unlocked offline (Achievements mod). Delete this file to start over.\n[unlocked]\n";
+    for (const auto& [k, v] : s.unlocked) o << k << '=' << v << '\n';
+    o << "\n; Progress counted from gameplay events since the mod was installed.\n[counters]\n";
+    for (const auto& [k, v] : s.ctr.v) o << k << '=' << v << '\n';
+    const std::string text = o.str();
+    const std::wstring tmp = path + L".tmp";
+    HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD w = 0;
+    const bool ok = WriteFile(h, text.data(), static_cast<DWORD>(text.size()), &w, nullptr) && w == text.size();
+    CloseHandle(h);
+    return ok && MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+}
+
+// fh2-mods\Achievements\Achievements.txt: the list, until the in-game page exists.
+void write_list(const std::wstring& path, const Facts& f, const Store& s) {
+    int got = 0, gs = 0, gsAll = 0;
+    for (const Def& d : defs()) {
+        gsAll += d.gamerscore;
+        if (s.unlocked.count(d.id)) {
+            ++got;
+            gs += d.gamerscore;
+        }
+    }
+    std::ostringstream o;
+    o << "Forza Horizon 2 achievements: " << got << " of " << defs().size() << " unlocked, " << gs << "G of " << gsAll
+      << "G\n";
+    const char* groups[] = {"Forza Horizon 2", "Storm Island", "Porsche Expansion"};
+    for (int g = 0; g < 3; ++g) {
+        o << "\n== " << groups[g] << " ==\n";
+        for (const Def& d : defs()) {
+            if (static_cast<int>(d.group) != g) continue;
+            const bool done = s.unlocked.count(d.id) > 0;
+            char head[160];
+            std::snprintf(head, sizeof head, "[%c] %-36s %3dG  ", done ? 'x' : ' ', d.name, d.gamerscore);
+            o << head << d.desc;
+            if (done) {
+                o << "  (unlocked " << s.unlocked.at(d.id) << ")";
+            } else {
+                if (d.eval && d.unit) {
+                    const Progress p = d.eval(f);
+                    char pr[96];
+                    std::snprintf(pr, sizeof pr, "  [%.0f / %.0f %s]", p.have, p.need, d.unit);
+                    o << pr;
+                }
+                if (d.track == Track::Online) o << "  (requires online play)";
+                else if (d.track == Track::Pending) o << "  (not tracked yet)";
+                else if (d.track == Track::Events) o << "  (counts from when the mod was installed)";
+            }
+            o << '\n';
+        }
+    }
+    std::ofstream(path.c_str(), std::ios::binary) << o.str();
+}
+
+// ---- the worker -----------------------------------------------------------------------------
+
+FH2Hook* hook(const char* name, uintptr_t at, FH2InstructionFn fn) {
+    FH2Hook* h = g_api->hook_instruction(g_mod, name, g_base + at, fn, nullptr);
+    if (!h) logf("couldn't hook %s (see platform.log)", name);
+    return h;
+}
+
+DWORD WINAPI worker(LPVOID) {
+    g_base = static_cast<uint8_t*>(g_api->wait_for_code(0xFFFFFFFFu));
+    if (!g_base) {
+        logf("the game's code never became ready");
+        flush_log();
+        return 0;
+    }
+    int made = 0;
+    if (g_api->hook_pointer(g_mod, "EtxEventWrite (import slot)", reinterpret_cast<void**>(g_base + rva::EtxEventWriteSlot),
+                            reinterpret_cast<void*>(&etx_detour), reinterpret_cast<void**>(&o_etx)))
+        ++made;
+    else
+        logf("couldn't hook the telemetry import (see platform.log): no event-based achievements");
+    made += hook("SetStat (after its enabled check)", rva::SetStatHook, &on_set_stat) != nullptr;
+    made += hook("HUDMinorNotificationComponent constructor", rva::NotifCtor, &on_notif_ctor) != nullptr;
+    made += hook("HUDMinorNotificationComponent destructor", rva::NotifDtor, &on_notif_dtor) != nullptr;
+    made += hook("AchievementsModule update (pop-up tick)", rva::AchModUpdate, &on_tick) != nullptr;
+    g_api->enable_hooks(g_mod, nullptr);
+    logf("%d of 5 hooks made", made);
+    plog(std::to_string(made) + " of 5 hooks made; logging to fh2-mods\\Achievements\\Achievements.log");
+
+    GameData gd;
+    std::string why;
+    if (read_game_data(g_gameDir, gd, why))
+        logf("game data: %zu championship races in %zu car types, %d + %d championships, %zu Gauntlets, %zu bucket list "
+             "challenges, %zu Porsches",
+             gd.champEventBucket.size(), gd.mainlandBuckets.size(), gd.mainlandCampaigns, gd.islandCampaigns,
+             gd.gauntletCampaigns.size(), gd.bucketList.size(), gd.porsches.size());
+    else
+        logf("%s", why.c_str());
+
+    std::wstring userDir, user;
+    while (!find_user_dir(g_azimuth, userDir, user, why)) {
+        static bool told = false;
+        if (!told) logf("%s; waiting for one", why.c_str());
+        told = true;
+        flush_log();
+        Sleep(5000);
+    }
+    const std::wstring storePath = g_dir + L"\\" + user + L".ini", listPath = g_dir + L"\\Achievements.txt";
+    Store store;
+    load_store(storePath, store);
+    logf("profile %s: %zu achievements unlocked before%s", narrow(user).c_str(), store.unlocked.size(),
+         store.existed ? "" : " (first run)");
+
+    SaveFacts save;
+    LiveFacts live;
+    bool firstEval = true, storeDirty = false, dirty = false, listDirty = false;
+    uint32_t statVersion = ~0u;
+    ULONGLONG lastScan = 0, lastFlush = 0, lastStoreWrite = 0, lastList = 0;
+    std::map<std::string, ULONGLONG> refused;   // revision -> when it was last refused
+
+    for (;;) {
+        const ULONGLONG now = GetTickCount64();
+        // 1. A newer finished save revision? The newest one may still be being written: then
+        // keep what we have and try it again in a few seconds (or, at the start, use the one before).
+        if (now - lastScan > 5000) {
+            lastScan = now;
+            for (const std::wstring& rev : list_revisions(userDir)) {
+                const std::string r = narrow(rev);
+                if (save.ok && r == save.revision) break;
+                auto it = refused.find(r);
+                if (it != refused.end() && now - it->second < 15000) {
+                    if (save.ok) break;
+                    continue;
+                }
+                SaveFacts next;
+                if (read_revision(userDir + L"\\revisions\\" + rev, g_dir + L"\\cache", next, why)) {
+                    save = std::move(next);
+                    dirty = true;
+                    logf("read save revision %s: %zu stats, %zu objects, %zu cars, %zu championships done", r.c_str(),
+                         save.stats.size(), save.objects.size(), save.garage.size(), save.champsCompleted.size());
+                    break;
+                }
+                if (it == refused.end()) logf("save revision %s not used yet: %s", r.c_str(), why.c_str());
+                refused[r] = now;
+                if (save.ok) break;
+            }
+        }
+        // 2. events
+        std::deque<Event> evs;
+        {
+            std::lock_guard<std::mutex> lk(g_evMu);
+            evs.swap(g_events);
+        }
+        for (const Event& e : evs)
+            if (count_event(e, gd, store.ctr, live)) {
+                dirty = storeDirty = true;
+            }
+        // 3. live stats
+        if (g_statVersion != statVersion) {
+            statVersion = g_statVersion;
+            std::lock_guard<std::mutex> lk(g_statMu);
+            live.stats = g_liveStats;
+            dirty = true;
+        }
+        // 4. the rules
+        if (dirty && save.ok) {
+            dirty = false;
+            Facts f{gd, save, live, store.ctr};
+            std::vector<const Def*> fresh;
+            int gs = 0;
+            for (const Def& d : defs()) {
+                if (!d.eval || store.unlocked.count(d.id)) continue;
+                if (!d.eval(f).done()) continue;
+                store.unlocked[d.id] = now_utc();
+                fresh.push_back(&d);
+                gs += d.gamerscore;
+                logf("unlocked: %s (%dG)", d.name, d.gamerscore);
+            }
+            if (!fresh.empty()) {
+                storeDirty = true;
+                char sub[128];
+                if (firstEval && (!store.existed || fresh.size() >= 3)) {
+                    std::snprintf(sub, sizeof sub, "%zu unlocked from your save - %dG", fresh.size(), gs);
+                    queue_popup("ACHIEVEMENTS UNLOCKED", sub);
+                } else if (fresh.size() >= 4) {
+                    std::snprintf(sub, sizeof sub, "%zu unlocked - %dG", fresh.size(), gs);
+                    queue_popup("ACHIEVEMENTS UNLOCKED", sub);
+                } else {
+                    for (const Def* d : fresh) {
+                        std::snprintf(sub, sizeof sub, "%s - %dG", d->name, d->gamerscore);
+                        queue_popup("ACHIEVEMENT UNLOCKED", sub);
+                    }
+                }
+            }
+            if (firstEval) {
+                firstEval = false;
+                if (!store.existed) storeDirty = true;   // so a first run with nothing unlocked still counts as run
+            }
+            listDirty = true;
+            if (!fresh.empty()) lastList = 0;   // write it now
+        }
+        if (listDirty && save.ok && now - lastList > 10000) {
+            write_list(listPath, Facts{gd, save, live, store.ctr}, store);
+            listDirty = false;
+            lastList = now;
+        }
+        if (storeDirty && now - lastStoreWrite > 3000) {
+            if (save_store(storePath, store)) storeDirty = false;
+            else logf("couldn't write %s", narrow(storePath).c_str());
+            lastStoreWrite = now;
+        }
+        // The game world is up a minute after the HUD's notifications are made, at the latest.
+        if (!g_ready && g_firstCompTick && now - g_firstCompTick > 60000) g_ready = true;
+        if (now - lastFlush > 1000) {
+            flush_log();
+            lastFlush = now;
+        }
+        Sleep(250);
+    }
+}
+
+}  // namespace
+
+FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
+    if (!api || api->api_version < 7) return 1;
+    g_api = api;
+    g_t0 = GetTickCount64();
+    FH2ModInfo info{};
+    info.size             = sizeof info;
+    info.name             = "Achievements";
+    info.version          = ACH_VERSION;
+    info.platform_version = FH2MOD_PLATFORM_VERSION;
+    info.description      = "Forza Horizon 2's 88 achievements, earned offline, with the game's own pop-up. Progress "
+                            "already in your save counts.";
+    g_mod = api->register_mod(&info);
+    if (!g_mod) return 1;
+
+    g_azimuth = api->azimuth_dir;
+    g_gameDir = api->game_dir ? api->game_dir : L"";
+    g_dir     = g_azimuth + L"\\fh2-mods\\Achievements";
+    CreateDirectoryW(g_dir.c_str(), nullptr);
+    CreateDirectoryW((g_dir + L"\\cache").c_str(), nullptr);
+    g_iniPath = g_azimuth + L"\\fh2-mods\\Achievements.ini";
+    g_logPath = g_dir + L"\\Achievements.log";
+    HANDLE h = CreateFileW(g_logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+    logf("Achievements %s", ACH_VERSION);
+
+    g_popupsOn = GetPrivateProfileIntW(L"Achievements", L"Popups", 1, g_iniPath.c_str()) != 0;
+    FH2Setting s{};
+    s.size        = sizeof s;
+    s.key         = "Popups";
+    s.label       = "Achievement pop-ups";
+    s.description = "Show the game's notification when you unlock an achievement.";
+    s.value       = g_popupsOn ? 1 : 0;
+    s.on_change   = &on_setting;
+    api->add_setting(g_mod, &s);
+
+    if (HANDLE t = CreateThread(nullptr, 0, worker, nullptr, 0, nullptr)) CloseHandle(t);
+    return 0;
+}
