@@ -367,7 +367,11 @@ PageXaml page_xaml(const Facts* f, const std::map<std::string, std::string>& unl
     // left: the sections
     c += "                        <Grid Margin=\"0,0,6,0\" local:UIPageTransitionManager.TransitionIndex=\"0\">\r\n"
          "                            <local:FZMaterial Color=\"{StaticResource A_Color_TileSelected_Text}\">\r\n" +
-         list_open("OptionsList", "Ach_Item_Section", kLeftW, kH, " SelectedIndex=\"{Binding FH2Mod_Slot_0, Mode=TwoWay}\"");
+         // While the focus is on the cards, the sections are switched off, so they can't take it:
+         // the page puts the focus back on OptionsList (its FocusManager.FocusedElement) when it's
+         // elsewhere, if it can. (On MODS > Installed mods, OptionsList is hidden at such times.)
+         list_open("OptionsList", "Ach_Item_Section", kLeftW, kH,
+                   " SelectedIndex=\"{Binding FH2Mod_Slot_0, Mode=TwoWay}\" IsEnabled=\"{Binding FH2Mod_Slot_1_Is_0}\"");
     for (size_t k = 0; k < secs.size(); ++k) {
         int sGot = 0, sAll = 0;
         for (const Card& cd : cards[k]) {

@@ -433,17 +433,21 @@ void push_page(const Facts* f, const Store& s) {
 }
 
 // A on a section: into its achievements. B there: back to the section. B on the sections leaves.
+// The pane changes first, so the sections stop (or start) taking the focus before it moves.
 int on_page_button(void*, const char* key, int button) {
     const int pane = g_api->get_page_slot(g_mod, key, kSlotPane), sec = g_api->get_page_slot(g_mod, key, kSlotSection);
     if (button == FH2_BUTTON_A) {
-        if (pane != 0) return FH2_PAGE_HANDLED;
-        if (!g_api->focus_page_element(g_mod, key, ("Ach_Card_" + std::to_string(sec) + "_0").c_str())) return FH2_PAGE_HANDLED;
+        if (pane != 0 || sec < 0) return FH2_PAGE_HANDLED;
         g_api->set_page_slot(g_mod, key, kSlotPane, 1);
+        if (!g_api->focus_page_element(g_mod, key, ("Ach_Card_" + std::to_string(sec) + "_0").c_str())) {
+            g_api->set_page_slot(g_mod, key, kSlotPane, 0);
+            return FH2_PAGE_HANDLED;
+        }
         return FH2_PAGE_HANDLED_SELECT;
     }
     if (button == FH2_BUTTON_B && pane == 1) {
-        g_api->focus_page_element(g_mod, key, sec == 0 ? "FirstItem" : ("Ach_Sec_" + std::to_string(sec)).c_str());
         g_api->set_page_slot(g_mod, key, kSlotPane, 0);
+        g_api->focus_page_element(g_mod, key, sec <= 0 ? "FirstItem" : ("Ach_Sec_" + std::to_string(sec)).c_str());
         return FH2_PAGE_HANDLED_BACK;
     }
     return FH2_PAGE_IGNORED;
