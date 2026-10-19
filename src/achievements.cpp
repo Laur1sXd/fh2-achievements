@@ -432,6 +432,7 @@ bool save_store(const std::wstring& path, const Store& s) {
 bool g_pageOn = false;   // the platform has pages, and ours was added
 
 std::string g_tileText;   // as last set
+int g_tileBand = -1;      // the wristband the tile shows, as last set
 void push_page(const Facts* f, const Store& s) {
     if (!g_pageOn) return;
     const PageXaml x = page_xaml(f, s.unlocked);
@@ -451,6 +452,34 @@ void push_page(const Facts* f, const Store& s) {
     if (text != g_tileText) {
         if (g_api->set_page_tile_text(g_mod, "List", text.c_str())) g_tileText = text;
         else logf("the tile's text was refused");
+    }
+    // ... in the colour of a wristband: the game's own, from media\GameTunableSettings\
+    // PlayerXPLevels.xml (each band's ColourNum, and the TextColour on it). A band per tenth of
+    // the Gamerscore you can earn offline; Gold for all of it.
+    struct Band {
+        const char* name;
+        uint32_t back, text;
+    };
+    static const Band kBands[] = {
+        {"Yellow", 0xFFFCFF14, 0xFF444444}, {"Green", 0xFF50AE36, 0xFFFEFEFE},  {"Blue", 0xFF3667DB, 0xFFFEFEFE},
+        {"Pink", 0xFFF05A77, 0xFFFEFEFE},   {"Orange", 0xFFDD791F, 0xFFFEFEFE}, {"Purple", 0xFF7533B3, 0xFFFEFEFE},
+        {"Red", 0xFFCE4134, 0xFFFEFEFE},    {"Turquoise", 0xFF3BDABA, 0xFF444444}, {"Bronze", 0xFF9C5932, 0xFFFEFEFE},
+        {"Silver", 0xFFABB8C7, 0xFF444444}, {"Gold", 0xFFC2B336, 0xFFFEFEFE},
+    };
+    int offGot = 0, offAll = 0;
+    for (const Def& d : defs()) {
+        if (d.track == Track::Online) continue;
+        offAll += d.gamerscore;
+        if (s.unlocked.count(d.id)) offGot += d.gamerscore;
+    }
+    const int band = offGot >= offAll ? 10 : std::min(9, offAll ? offGot * 10 / offAll : 0);
+    if (band != g_tileBand) {
+        if (g_api->set_page_tile_colors(g_mod, "List", kBands[band].back, kBands[band].text)) {
+            g_tileBand = band;
+            logf("the Achievements tile is %s (%d of the %dG you can earn offline)", kBands[band].name, offGot, offAll);
+        } else {
+            logf("the tile's colours were refused");
+        }
     }
 }
 
