@@ -595,6 +595,11 @@ DWORD WINAPI worker(LPVOID) {
                 if (read_revision(userDir + L"\\revisions\\" + rev, g_dir + L"\\cache", &save, next, why)) {
                     save = std::move(next);
                     dirty = true;
+                    if (take_baselines(save, store.ctr)) {
+                        storeDirty = true;
+                        logf("bounty wins before the mod, from the save: %lld",
+                             static_cast<long long>(store.ctr.get("h2h.bounty.base")));
+                    }
                     logf("read save revision %s: %zu stats, %zu objects, %zu cars, %zu championships done", r.c_str(),
                          save.stats.size(), save.objects.size(), save.garage.size(), save.champsCompleted.size());
                     break;

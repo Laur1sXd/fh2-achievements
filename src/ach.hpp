@@ -151,6 +151,9 @@ constexpr int64_t kWorldIsland = 549;
 
 // Folds one event into the counters (and the live facts, for boards). Returns true if anything changed.
 bool count_event(const Event& e, const GameData& gd, Counters& c, LiveFacts& live);
+// Counts from the first save read, for rules that add what events count after it (kept with the
+// counters, so taken once). Returns true if one was taken.
+bool take_baselines(const SaveFacts& save, Counters& c);
 
 // ---- the save ------------------------------------------------------------------------------
 

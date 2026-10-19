@@ -188,12 +188,12 @@ RULE(r_widow_maker) { return Flag(f.ctr.get("win.wet.265") > 0); }
 // Choosing the Road Trip's next stop: the game's RoadTripCreated event, sent only from the
 // destination screen (RoadTripDestinationSelect) when a destination is picked there.
 RULE(r_horizon_leader) { return Flag(f.ctr.get("roadtrip.chosen") > 0); }
-// Bounty Head-to-Heads won: RaceEncounterEnd with its rareSpawn flag, since the mod was installed.
-// For the ones before, the save's count of the bounty-win dialogue (it plays on a bounty win; it
-// can only undercount, so the larger of the two is taken).
+// Bounty Head-to-Heads won: RaceEncounterEnd with its rareSpawn flag, since the mod was installed,
+// added to the ones before: the save's count of the bounty-win line when the mod first read it.
+// The line doesn't play on every bounty win (a test win left it at 1), so it can only undercount.
 RULE(r_wild_drivatar) {
     const int64_t said = std::atoll(f.prop("DIALOGUE_BountyWin", "PlayCount").c_str());
-    return P(static_cast<double>(std::max(f.ctr.get("h2h.bounty.won"), said)), 3);
+    return P(static_cast<double>(std::max(said, f.ctr.get("h2h.bounty.base") + f.ctr.get("h2h.bounty.won"))), 3);
 }
 
 RULE(r_car_types) {
@@ -388,6 +388,18 @@ const std::vector<Def> kDefs = {
 const std::vector<Def>& defs() { return kDefs; }
 
 // ---- events -----------------------------------------------------------------------------------
+
+bool take_baselines(const SaveFacts& save, Counters& c) {
+    if (!save.ok || c.v.count("h2h.bounty.base")) return false;
+    int64_t said = 0;
+    auto o = save.objects.find("DIALOGUE_BountyWin");
+    if (o != save.objects.end()) {
+        auto p = o->second.find("PlayCount");
+        if (p != o->second.end()) said = std::atoll(p->second.c_str());
+    }
+    c.v["h2h.bounty.base"] = said;
+    return true;
+}
 
 bool count_event(const Event& e, const GameData& gd, Counters& c, LiveFacts& live) {
     switch (e.id) {
