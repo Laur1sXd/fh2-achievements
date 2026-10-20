@@ -30,7 +30,7 @@ Install
 d3dcompiler_47.dll is the FH2 Mod Platform, the shared base for FH2 mods
 (https://github.com/Trinculo54/FH2-Mod-Platform). It loads every mod in
 fh2-mods, and every mod built on it ships the same file, so it's fine to
-overwrite. The list and the tile need platform 2.7.0, the one in this zip.
+overwrite. The list and the tile need platform 2.7.0 or newer (this zip has 2.7.1).
 
 
 In the game

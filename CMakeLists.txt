@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 # Bump VERSION before tagging a release (the tag build checks they match).
-project(achievements VERSION 1.0.0 LANGUAGES C CXX RC)
+project(achievements VERSION 1.0.1 LANGUAGES C CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,6 +25,13 @@ endif()
 add_subdirectory(platform)
 configure_file(cmake/version.h.in ${CMAKE_BINARY_DIR}/generated/fh2_version.h)
 
+# SQLite (public domain, third_party/sqlite/VERSION.txt), to read the save and the game
+# database. Windows has its own (winsqlite3.dll), but Wine and Proton don't.
+set(SQLITE_SRC third_party/sqlite/sqlite3.c)
+set_source_files_properties(${SQLITE_SRC} PROPERTIES
+    COMPILE_OPTIONS "-w;-Os"
+    COMPILE_DEFINITIONS "SQLITE_OMIT_LOAD_EXTENSION;SQLITE_DEFAULT_MEMSTATUS=0")
+
 # The mod: fh2-mods\Achievements.dll
 add_library(achievements SHARED
     src/achievements.cpp
@@ -32,8 +39,9 @@ add_library(achievements SHARED
     src/rules.cpp
     src/save_reader.cpp
     src/sqlite.cpp
-    src/version.rc)
-target_include_directories(achievements PRIVATE src ${CMAKE_BINARY_DIR}/generated)
+    src/version.rc
+    ${SQLITE_SRC})
+target_include_directories(achievements PRIVATE src third_party/sqlite ${CMAKE_BINARY_DIR}/generated)
 target_compile_definitions(achievements PRIVATE ACH_VERSION="${PROJECT_VERSION}")
 target_link_libraries(achievements PRIVATE fh2mod_api bcrypt)
 set_target_properties(achievements PROPERTIES OUTPUT_NAME Achievements PREFIX "")
