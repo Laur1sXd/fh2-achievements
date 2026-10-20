@@ -28,6 +28,10 @@ When a newer version is out, the title screen says so next to "PRESS (A) TO STAR
 
 **Playing with a racing wheel.** [fh2wheel](https://github.com/iamAzoDx/fh2wheel) ships its own `D3DCOMPILER_47.dll`, and only one can sit next to `azimuth.exe`. Install fh2wheel first, then extract this zip and let its `d3dcompiler_47.dll` overwrite fh2wheel's. Keep `fh2wheel.dll` and `fh2wheel-config.exe` next to `azimuth.exe`: the platform loads fh2wheel itself.
 
+### On Linux (Wine or Proton)
+
+From 1.0.1 it works as it does on Windows. 1.0.0 read your save with Windows' built-in SQLite (`winsqlite3.dll`), which Wine and Proton don't have, so on Linux it never unlocked anything and its log said "winsqlite3.dll isn't available". Achievements you earned in the meantime are in your save, and 1.0.1 unlocks them on its first launch. Getting FH2 mods running on Linux in general is covered in the platform's [Linux notes](https://github.com/Trinculo54/FH2-Mod-Platform/blob/main/docs/linux.md).
+
 ## What counts
 
 Most achievements are worked out from your save (read, never written): championships and their results, the road trip, wristbands from your XP, cars in your garage, skill points, reward and bonus boards, roads driven, barn finds, Horizon Promo photos, bucket list challenges, Storm Island and the Porsche Expansion's own progress, and each race's weather. Everything you did before installing counts towards those.
@@ -74,4 +78,4 @@ How each achievement is worked out, and the game addresses the mod uses, are in 
 
 ## License
 
-GPLv3. Unofficial fan-made mod; not affiliated with Playground Games, Turn 10, Microsoft or the Azimuth developers.
+GPLv3. It includes [SQLite](https://sqlite.org) (`third_party/sqlite`), which is in the public domain. Unofficial fan-made mod; not affiliated with Playground Games, Turn 10, Microsoft or the Azimuth developers.
