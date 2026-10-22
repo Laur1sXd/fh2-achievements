@@ -113,7 +113,7 @@ bool parse_savestate(const std::string& t, SaveFacts& out, std::string& why) {
     while ((p = t.find('<', p)) != std::string::npos) {
         const size_t e = t.find('>', p);
         if (e == std::string::npos) break;
-        if (t.compare(p, 8, "<Object " ) == 0) {
+        if (t.compare(p, 8, "<Object ") == 0) {
             std::string id, type;
             if (attr(t, p, e, "Id", id) && attr(t, p, e, "Type", type)) {
                 cur = id;
@@ -121,7 +121,7 @@ bool parse_savestate(const std::string& t, SaveFacts& out, std::string& why) {
                 out.objects[id];
                 ++objects;
             }
-        } else if (t.compare(p, 10, "<Property " ) == 0 && !cur.empty()) {
+        } else if (t.compare(p, 10, "<Property ") == 0 && !cur.empty()) {
             std::string name, value;
             if (attr(t, p, e, "Name", name) && attr(t, p, e, "Value", value)) out.objects[cur][name] = value;
         } else if (t.compare(p, 9, "</Object>") == 0) {
