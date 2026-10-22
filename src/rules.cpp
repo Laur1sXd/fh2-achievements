@@ -361,7 +361,7 @@ const std::vector<Def> kDefs = {
     {"multi_disciplined", "Multi-Disciplined", "Win an Event in every type of car.", 10, G::Base, T::Save, "car types", r_car_types},
     {"wild_drivatar", "A Wild Drivatar Appears!", "Win 3 Head-to-Head Races against Drivatars with a Bounty on them.", 10, G::Base, T::Save, "wins", r_wild_drivatar},
     {"we_meet_again", "We Meet Again!", "Win a Showdown at every Car Meet.", 20, G::Base, T::Online, nullptr, nullptr},
-    {"friends_with_benefits", "Friends with Benefits", "Earn a total of 1,000,000 Cr from Rivals.", 10, G::Base, T::Online, "Cr", nullptr},
+    {"friends_with_benefits", "Friends with Benefits", "Earn a total of 1,000,000 Cr from Rivals.", 10, G::Base, T::Online, "Cr", r_rivals_credits},
     {"super_meet_boy", "Super Meet Boy", "Grab a livery, grab a tuning setup, buy a car, and enter a Showdown at any Car Meet.", 10, G::Base, T::Online, nullptr, nullptr},
     {"bragging_rights", "Bragging Rights", "Beat Friends or Club members on any 20 Speed Cameras.", 10, G::Base, T::Online, nullptr, nullptr},
     {"social_caterpillar", "Social Caterpillar", "Compete in 20 Multiplayer Events.", 10, G::Base, T::Online, "events", r_mp20},
